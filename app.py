@@ -266,13 +266,6 @@ def halaman_login_daftar():
 if st.session_state["halaman"] == "beranda":
     # Halaman Utama
     st.header("📺 Data Siaran TV Digital di Indonesia")
-
-    if not st.session_state["login"]:
-        st.info("Untuk menambahkan data, silakan login terlebih dahulu.")
-        if st.button("🔐 Login / Daftar Akun"):
-            st.session_state["halaman"] = "login"
-            st.rerun()
-
     # Menampilkan data siaran
     provinsi_data = db.reference("provinsi").get()
     if provinsi_data:
@@ -295,6 +288,13 @@ if st.session_state["halaman"] == "beranda":
             st.info("Belum ada data wilayah layanan untuk provinsi ini.")
     else:
         st.warning("Belum ada data provinsi.")
+    
+    if not st.session_state["login"]:
+        st.info("Untuk menambahkan data, silakan login terlebih dahulu.")
+        if st.button("🔐 Login / Daftar Akun"):
+            st.session_state["halaman"] = "login"
+            st.rerun()
+
 
 if st.session_state.get("halaman") == "login":
     halaman_login_daftar()

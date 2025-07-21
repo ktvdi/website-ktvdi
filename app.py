@@ -188,7 +188,7 @@ def halaman_login_daftar():
                             st.toast("OTP salah.")
                         elif not new_pw:
                             st.toast("Password tidak boleh kosong.")
-                        elif len(pw) < 6:
+                        elif len(new_pw) < 6:
                             st.toast("Password minimal 6 karakter.")
                         else:
                             username = st.session_state.reset_username

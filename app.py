@@ -25,6 +25,34 @@ st.session_state.setdefault("login_error", "")
 st.session_state.setdefault("page", "home")
 
 st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
+st.header("📺 Data Siaran TV Digital di Indonesia")
+
+# Ambil data provinsi dari Firebase
+provinsi_data = db.reference("provinsi").get()
+
+if provinsi_data:
+    provinsi_list = sorted(provinsi_data.values())  # ["Jakarta", "Jawa Barat", ...]
+    selected_provinsi = st.selectbox("Pilih Provinsi", provinsi_list)
+
+    # Ambil data siaran berdasarkan provinsi
+    siaran_data = db.reference(f"siaran/{selected_provinsi}").get()
+
+    if siaran_data:
+        wilayah_list = sorted(siaran_data.keys())
+        selected_wilayah = st.selectbox("Pilih Wilayah Layanan", wilayah_list)
+
+        mux_data = siaran_data[selected_wilayah]
+        mux_list = sorted(mux_data.keys())
+        selected_mux = st.selectbox("Pilih Penyelenggara MUX", mux_list)
+
+        st.subheader("📡 Daftar Siaran TV:")
+        for tv in mux_data[selected_mux]:
+            st.write(f"- {tv}")
+    else:
+        st.info("Belum ada data wilayah layanan untuk provinsi ini.")
+else:
+    st.warning("Belum ada data provinsi.")
+
 
 def generate_otp():
     return str(random.randint(100000, 999999))

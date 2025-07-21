@@ -258,7 +258,7 @@ def halaman_login_daftar():
                             "Pilih": "Login",
                             "mode": "Login"
                         })
-                        st.rerun()
+                        st.stop()
     if st.button("⬅️ Kembali ke Beranda"):
         st.session_state["halaman"] = "beranda"
         st.rerun()

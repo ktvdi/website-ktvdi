@@ -227,6 +227,8 @@ def halaman_login_daftar():
                         st.toast("❌ Email sudah digunakan.")
                     elif not user.isalnum() or not user.islower() or " " in user:
                         st.toast("Gunakan huruf kecil/angka tanpa spasi.")
+                    elif len(pw) < 6:
+                        st.toast("Password minimal 6 karakter.")
                     elif user in users:
                         st.toast("Username sudah terdaftar.")
                     else:

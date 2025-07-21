@@ -300,11 +300,6 @@ if is_logged_in and username:
             # Pisahkan daftar siaran jadi list
             siaran_list = [s.strip() for s in siaran_input.split(",") if s.strip()]
             
-            # Tambahkan ke data lokal sementara (atau bisa simpan ke Firebase)
-            if provinsi not in data_manual:
-                data_manual[provinsi] = {}
-            if wilayah not in data_manual[provinsi]:
-                data_manual[provinsi][wilayah] = {}
-            data_manual[provinsi][wilayah][mux] = siaran_list
+            db.reference(f"siaran/{prov_id}/{wilayah}/{mux}").set(siaran_list)
 
             st.success("Data berhasil disimpan!")

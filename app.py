@@ -24,42 +24,7 @@ st.session_state.setdefault("login_attempted", False)
 st.session_state.setdefault("login_error", "")
 st.session_state.setdefault("halaman", "beranda")
 
-if st.session_state.get("halaman") == "login":
-    halaman_login_daftar()
-
-if st.session_state["halaman"] == "beranda":
-    # Halaman Utama
-    st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
-    st.header("📺 Data Siaran TV Digital di Indonesia")
-
-    if not st.session_state["login"]:
-        st.info("Untuk menambahkan data, silakan login terlebih dahulu.")
-        if st.button("🔐 Login / Daftar Akun"):
-            st.session_state["halaman"] = "login"
-            st.rerun()
-
-    # Menampilkan data siaran
-    provinsi_data = db.reference("provinsi").get()
-    if provinsi_data:
-        provinsi_list = sorted(provinsi_data.values())
-        selected_provinsi = st.selectbox("Pilih Provinsi", provinsi_list)
-        siaran_data = db.reference(f"siaran/{selected_provinsi}").get()
-
-        if siaran_data:
-            wilayah_list = sorted(siaran_data.keys())
-            selected_wilayah = st.selectbox("Pilih Wilayah Layanan", wilayah_list)
-
-            mux_data = siaran_data[selected_wilayah]
-            mux_list = sorted(mux_data.keys())
-            selected_mux = st.selectbox("Pilih Penyelenggara MUX", mux_list)
-
-            st.subheader("📡 Daftar Siaran TV:")
-            for tv in mux_data[selected_mux]:
-                st.write(f"- {tv}")
-        else:
-            st.info("Belum ada data wilayah layanan untuk provinsi ini.")
-    else:
-        st.warning("Belum ada data provinsi.")
+st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
 
 def generate_otp():
     return str(random.randint(100000, 999999))
@@ -295,6 +260,41 @@ def halaman_login_daftar():
                         })
                         st.rerun()
 
+if st.session_state["halaman"] == "beranda":
+    # Halaman Utama
+    st.header("📺 Data Siaran TV Digital di Indonesia")
+
+    if not st.session_state["login"]:
+        st.info("Untuk menambahkan data, silakan login terlebih dahulu.")
+        if st.button("🔐 Login / Daftar Akun"):
+            st.session_state["halaman"] = "login"
+            st.rerun()
+
+    # Menampilkan data siaran
+    provinsi_data = db.reference("provinsi").get()
+    if provinsi_data:
+        provinsi_list = sorted(provinsi_data.values())
+        selected_provinsi = st.selectbox("Pilih Provinsi", provinsi_list)
+        siaran_data = db.reference(f"siaran/{selected_provinsi}").get()
+
+        if siaran_data:
+            wilayah_list = sorted(siaran_data.keys())
+            selected_wilayah = st.selectbox("Pilih Wilayah Layanan", wilayah_list)
+
+            mux_data = siaran_data[selected_wilayah]
+            mux_list = sorted(mux_data.keys())
+            selected_mux = st.selectbox("Pilih Penyelenggara MUX", mux_list)
+
+            st.subheader("📡 Daftar Siaran TV:")
+            for tv in mux_data[selected_mux]:
+                st.write(f"- {tv}")
+        else:
+            st.info("Belum ada data wilayah layanan untuk provinsi ini.")
+    else:
+        st.warning("Belum ada data provinsi.")
+
+if st.session_state.get("halaman") == "login":
+    halaman_login_daftar()
 
 def proses_logout():
     st.session_state.login = False

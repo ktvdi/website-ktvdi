@@ -250,7 +250,7 @@ if not st.session_state.get("login"):
             if st.button("Daftar"):
                 if input_otp != st.session_state.get("otp_code_daftar", ""):
                     st.error("Kode OTP salah.")
-                elif not user or not pw or not kode or not new_email or not full_name:
+                elif not user or not pw or not new_email or not full_name:
                     st.error("Semua kolom harus diisi.")
                 else:
                     db.reference("users").child(user).set({

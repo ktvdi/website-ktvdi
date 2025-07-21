@@ -304,46 +304,39 @@ def proses_logout():
     st.session_state.username = ""
     st.session_state.login_error = False
 
-# Sidebar
-username = st.session_state.get("username")
-is_logged_in = st.session_state.get("login", False)
-
-if is_logged_in and username:
-    users_ref = db.reference("users")
-    users = users_ref.get() or {}
+    # Sidebar untuk user login
+if st.session_state["login"]:
+    username = st.session_state["username"]
+    users = db.reference("users").get() or {}
     user_data = users.get(username, {})
-
     nama_pengguna = user_data.get("nama", username)
+
     st.sidebar.title(f"Hai, {nama_pengguna}!")
-    st.sidebar.button("Logout", on_click=proses_logout)
-    
+    st.sidebar.button("🚪 Logout", on_click=proses_logout)
+
     st.markdown("## ✍️ Tambahkan Data Siaran")
 
-    # Pilih provinsi dari Firebase
+    # Pilih provinsi
     provinsi_data = db.reference("provinsi").get()
     if provinsi_data:
         provinsi_list = sorted(provinsi_data.values())
         provinsi = st.selectbox("Pilih Provinsi", provinsi_list)
     else:
         st.warning("Belum ada data provinsi.")
-    # Input wilayah layanan
+
+    # Input wilayah, mux, siaran
     wilayah = st.text_input("Masukkan Wilayah Layanan")
-
-    # Input penyelenggara MUX
     mux = st.text_input("Masukkan Nama Penyelenggara MUX")
+    siaran_input = st.text_area(
+        "Masukkan Daftar Siaran (pisahkan dengan koma)",
+        placeholder="Contoh: RCTI, SCTV, Indosiar"
+    )
 
-    # Input daftar siaran
-    siaran_input = st.text_area("Masukkan Daftar Siaran (pisahkan dengan koma)",
-                                placeholder="Contoh: RCTI, SCTV, Indosiar")
-
-    # Tombol simpan
     if st.button("Simpan Data"):
         if not (provinsi and wilayah and mux and siaran_input):
             st.warning("Harap isi semua kolom.")
         else:
-            # Pisahkan daftar siaran jadi list
             siaran_list = [s.strip() for s in siaran_input.split(",") if s.strip()]
-            
             db.reference(f"siaran/{provinsi}/{wilayah}/{mux}").set(siaran_list)
-
             st.success("Data berhasil disimpan!")
+

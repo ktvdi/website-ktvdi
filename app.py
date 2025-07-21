@@ -24,6 +24,9 @@ st.session_state.setdefault("login_attempted", False)
 st.session_state.setdefault("login_error", "")
 st.session_state.setdefault("halaman", "beranda")
 
+if st.session_state.get("halaman") == "login":
+    halaman_login_daftar()
+
 if st.session_state["halaman"] == "beranda":
     # Halaman Utama
     st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
@@ -133,9 +136,6 @@ if not st.session_state.login_triggered:
     st.session_state.login_attempted = False
 else:
     st.session_state.login_triggered = False
-
-if st.session_state.get("halaman") == "login":
-    halaman_login_daftar()
 
 def halaman_login_daftar():
     users_ref = db.reference("users")

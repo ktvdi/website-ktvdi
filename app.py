@@ -22,43 +22,41 @@ st.session_state.setdefault("otp_code", "")
 st.session_state.setdefault("reset_username", "")
 st.session_state.setdefault("login_attempted", False)
 st.session_state.setdefault("login_error", "")
-st.session_state.setdefault("page", "home")
+st.session_state.setdefault("halaman", "beranda")
 
-st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
-st.header("📺 Data Siaran TV Digital di Indonesia")
+if st.session_state["halaman"] == "beranda":
+    # Halaman Utama
+    st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
+    st.header("📺 Data Siaran TV Digital di Indonesia")
 
-if not st.session_state["login"]:
-    st.info("Untuk menambahkan data, silakan login terlebih dahulu.")
-    if st.button("🔐 Login / Daftar Akun"):
-        st.session_state["halaman"] = "login"
-        st.rerun()
+    if not st.session_state["login"]:
+        st.info("Untuk menambahkan data, silakan login terlebih dahulu.")
+        if st.button("🔐 Login / Daftar Akun"):
+            st.session_state["halaman"] = "login"
+            st.rerun()
 
-# Ambil data provinsi dari Firebase
-provinsi_data = db.reference("provinsi").get()
+    # Menampilkan data siaran
+    provinsi_data = db.reference("provinsi").get()
+    if provinsi_data:
+        provinsi_list = sorted(provinsi_data.values())
+        selected_provinsi = st.selectbox("Pilih Provinsi", provinsi_list)
+        siaran_data = db.reference(f"siaran/{selected_provinsi}").get()
 
-if provinsi_data:
-    provinsi_list = sorted(provinsi_data.values())  # ["Jakarta", "Jawa Barat", ...]
-    selected_provinsi = st.selectbox("Pilih Provinsi", provinsi_list)
+        if siaran_data:
+            wilayah_list = sorted(siaran_data.keys())
+            selected_wilayah = st.selectbox("Pilih Wilayah Layanan", wilayah_list)
 
-    # Ambil data siaran berdasarkan provinsi
-    siaran_data = db.reference(f"siaran/{selected_provinsi}").get()
+            mux_data = siaran_data[selected_wilayah]
+            mux_list = sorted(mux_data.keys())
+            selected_mux = st.selectbox("Pilih Penyelenggara MUX", mux_list)
 
-    if siaran_data:
-        wilayah_list = sorted(siaran_data.keys())
-        selected_wilayah = st.selectbox("Pilih Wilayah Layanan", wilayah_list)
-
-        mux_data = siaran_data[selected_wilayah]
-        mux_list = sorted(mux_data.keys())
-        selected_mux = st.selectbox("Pilih Penyelenggara MUX", mux_list)
-
-        st.subheader("📡 Daftar Siaran TV:")
-        for tv in mux_data[selected_mux]:
-            st.write(f"- {tv}")
+            st.subheader("📡 Daftar Siaran TV:")
+            for tv in mux_data[selected_mux]:
+                st.write(f"- {tv}")
+        else:
+            st.info("Belum ada data wilayah layanan untuk provinsi ini.")
     else:
-        st.info("Belum ada data wilayah layanan untuk provinsi ini.")
-else:
-    st.warning("Belum ada data provinsi.")
-
+        st.warning("Belum ada data provinsi.")
 
 def generate_otp():
     return str(random.randint(100000, 999999))
@@ -136,164 +134,167 @@ if not st.session_state.login_triggered:
 else:
     st.session_state.login_triggered = False
 
-# Ambil data users dari Firebase
-users_ref = db.reference("users")
-users = users_ref.get() or {}
+if st.session_state.get("halaman") == "login":
+    halaman_login_daftar()
 
-def proses_login():
-    user = st.session_state.get("login_user","").strip()
-    pw = st.session_state.get("login_pass","").strip()
-    st.session_state.login_triggered = True
-    st.session_state.login_attempted = True
-    if not user or not pw:
-        st.session_state.login_error = "Username dan password tidak boleh kosong."
-        return
+def halaman_login_daftar():
+    users_ref = db.reference("users")
+    users = users_ref.get() or {}
 
-    if user in users and users[user]["password"] == hash_password(pw):
-        st.session_state.login = True
-        st.session_state.username = user
-        st.session_state.login_error = ""
-        st.session_state.login_attempted = False
-    else:
-        st.session_state.login_error = "Username atau password salah."
+    def proses_login():
+        user = st.session_state.get("login_user", "").strip()
+        pw = st.session_state.get("login_pass", "").strip()
 
-# Login/Register
-if not st.session_state.get("login"):
-    # Tampilkan selectbox hanya jika tidak dalam mode lupa password atau reset OTP
-    if not st.session_state.get("lupa_password", False) and not st.session_state.get("otp_sent", False):
-        mode = st.selectbox("Pilih", ["Login", "Daftar Akun"])
-        st.session_state.mode = mode  # simpan mode agar tidak hilang saat rerun
-    else:
-        mode = st.session_state.get("mode", "Login")  # ambil dari session_state
+        st.session_state.login_triggered = True
+        st.session_state.login_attempted = True
+        if not user or not pw:
+            st.session_state.login_error = "Username dan password tidak boleh kosong."
+            return
 
-    if mode != "Login":
-        st.session_state.lupa_password = False
-        st.session_state.password_reset_success = False
-        st.session_state.otp_sent = False
-        st.session_state.otp_code = ""
-        st.session_state.reset_username = ""
-
-    if mode == "Login":
-        if not st.session_state.lupa_password:
-            st.header("Login Akun KTVDI")
-            st.text_input("Username", key="login_user")
-            st.text_input("Password", type="password", key="login_pass")
-            user_input = st.session_state.get("login_user", "")
-            pass_input = st.session_state.get("login_pass", "")
-            st.button("Login", on_click=proses_login)
-
-            if st.session_state.login_attempted and st.session_state.login_error:
-                st.toast(st.session_state.login_error)
-
-            if st.button("Lupa Password?"):
-                st.session_state.lupa_password = True
-                st.rerun()
+        if user in users and users[user]["password"] == hash_password(pw):
+            st.session_state.login = True
+            st.session_state.username = user
+            st.session_state.login_error = ""
+            st.session_state.login_attempted = False
+            st.session_state["halaman"] = "beranda"
         else:
-            st.header("Reset Password")
+            st.session_state.login_error = "Username atau password salah."
 
-            if not st.session_state.otp_sent:
-                lupa_nama = st.text_input("Nama Lengkap")
-                username = st.text_input("Username")
+    # Login/Register UI
+    if not st.session_state.get("login"):
+        if not st.session_state.get("lupa_password", False) and not st.session_state.get("otp_sent", False):
+            mode = st.selectbox("Pilih", ["Login", "Daftar Akun"])
+            st.session_state.mode = mode
+        else:
+            mode = st.session_state.get("mode", "Login")
 
-                if st.button("Kirim OTP ke Email"):
-                    if not lupa_nama or not username:
-                        st.toast("Semua kolom harus diisi.")
-                    elif username not in users:
-                        st.error("Username tidak ditemukan.")
-                    elif users[username]["nama"].strip().lower() != lupa_nama.strip().lower():
-                        st.error("Nama lengkap tidak cocok dengan data.")
-                    else:
-                        otp = generate_otp()
-                        if send_otp_email(users[username]["email"], otp):
-                            st.session_state.otp_code = otp
-                            st.session_state.reset_username = username
-                            st.session_state.otp_sent = True
-                            st.success(f"Kode OTP telah dikirim ke {users[username]['email']}.")
-                            time.sleep(2)
-                            st.rerun()
+        if mode != "Login":
+            st.session_state.lupa_password = False
+            st.session_state.password_reset_success = False
+            st.session_state.otp_sent = False
+            st.session_state.otp_code = ""
+            st.session_state.reset_username = ""
 
-                if st.button("❌ Batalkan"):
-                    st.session_state.lupa_password = False
+        if mode == "Login":
+            if not st.session_state.lupa_password:
+                st.header("🔐 Login Akun KTVDI")
+                st.text_input("Username", key="login_user")
+                st.text_input("Password", type="password", key="login_pass")
+                st.button("Login", on_click=proses_login)
+
+                if st.session_state.get("login_attempted") and st.session_state.get("login_error"):
+                    st.toast(st.session_state.login_error)
+
+                if st.button("Lupa Password?"):
+                    st.session_state.lupa_password = True
                     st.rerun()
             else:
-                # Tahap 2: Verifikasi OTP dan ganti password
-                input_otp = st.text_input("Masukkan Kode OTP")
-                new_pw = st.text_input("Password Baru", type="password")
+                st.header("Reset Password")
+                if not st.session_state.get("otp_sent"):
+                    lupa_nama = st.text_input("Nama Lengkap")
+                    username = st.text_input("Username")
 
-                if st.button("Reset Password"):
-                    if input_otp != st.session_state.otp_code:
-                        st.error("Kode OTP salah.")
-                    elif not new_pw:
-                        st.error("Password tidak boleh kosong.")
-                    else:
-                        username = st.session_state.reset_username
-                        db.reference("users").child(username).update({
-                            "password": hash_password(new_pw)
-                        })
-                        st.success("Password berhasil direset. Silakan login kembali.")
-                        st.session_state.password_reset_success = True
+                    if st.button("Kirim OTP ke Email"):
+                        if not lupa_nama or not username:
+                            st.toast("Semua kolom harus diisi.")
+                        elif username not in users:
+                            st.error("Username tidak ditemukan.")
+                        elif users[username]["nama"].strip().lower() != lupa_nama.strip().lower():
+                            st.error("Nama tidak cocok.")
+                        else:
+                            otp = generate_otp()
+                            if send_otp_email(users[username]["email"], otp):
+                                st.session_state.otp_code = otp
+                                st.session_state.reset_username = username
+                                st.session_state.otp_sent = True
+                                st.success(f"OTP dikirim ke {users[username]['email']}")
+                                time.sleep(2)
+                                st.rerun()
+
+                    if st.button("❌ Batalkan"):
                         st.session_state.lupa_password = False
-                        st.session_state.otp_sent = False
-                        st.session_state.otp_code = ""
-                        st.session_state.reset_username = ""
-                        time.sleep(3)
+                        st.rerun()
+                else:
+                    input_otp = st.text_input("Masukkan Kode OTP")
+                    new_pw = st.text_input("Password Baru", type="password")
+
+                    if st.button("Reset Password"):
+                        if input_otp != st.session_state.get("otp_code", ""):
+                            st.error("OTP salah.")
+                        elif not new_pw:
+                            st.error("Password tidak boleh kosong.")
+                        else:
+                            username = st.session_state.reset_username
+                            db.reference("users").child(username).update({
+                                "password": hash_password(new_pw)
+                            })
+                            st.success("Password berhasil direset. Silakan login.")
+                            st.session_state.update({
+                                "lupa_password": False,
+                                "otp_sent": False,
+                                "otp_code": "",
+                                "reset_username": ""
+                            })
+                            time.sleep(3)
+                            st.rerun()
+
+                    if st.button("❌ Batalkan"):
+                        st.session_state.update({
+                            "lupa_password": False,
+                            "otp_sent": False,
+                            "otp_code": "",
+                            "reset_username": ""
+                        })
                         st.rerun()
 
-                if st.button("❌ Batalkan"):
-                    st.session_state.lupa_password = False
-                    st.session_state.otp_sent = False
-                    st.session_state.otp_code = ""
-                    st.session_state.reset_username = ""
-                    st.rerun()
+        elif mode == "Daftar Akun":
+            st.header("📝 Daftar Akun Baru")
+            full_name = st.text_input("Nama Lengkap")
+            new_email = st.text_input("Email:", key="email_input")
+            user = st.text_input("Username Baru (huruf kecil/angka tanpa spasi)")
+            pw = st.text_input("Password Baru", type="password")
 
-    elif mode == "Daftar Akun":
-        st.header("Daftar Akun Baru")
-        full_name = st.text_input("Nama Lengkap")
-        new_email = st.text_input("Email:", key="email_input")
-        user = st.text_input("Username Baru (huruf kecil/angka tanpa spasi) contoh: koyjang45")
-        pw = st.text_input("Password Baru", type="password")
-
-        if not st.session_state.get("otp_sent_daftar"):
-            if st.button("Kirim OTP ke Email"):
-                users_ref = db.reference("users")
-                users = users_ref.get() or {}
-                invite_ref = db.reference("invite")
-                invite = invite_ref.get() or {"aktif": ""}
-                if not user or not pw or not new_email:
-                    st.toast("Semua kolom harus diisi.")
-                elif any(u.get("email", "").lower() == new_email.lower() for u in users.values()):
-                    st.toast("❌ Email sudah digunakan oleh pengguna lain.")
-                elif not user.isalnum() or not user.islower() or " " in user:
-                    st.toast("Username hanya boleh huruf kecil dan angka tanpa spasi.")
-                elif user in users:
-                    st.toast("Username sudah ada.")
-                else:
-                    otp = generate_otp()
-                    if send_newotp_email(new_email, otp):
-                        st.session_state.otp_sent_daftar = True
-                        st.session_state.otp_code_daftar = otp
-                        st.success("Kode OTP telah dikirim ke email anda.")
+            if not st.session_state.get("otp_sent_daftar"):
+                if st.button("Kirim OTP ke Email"):
+                    if not user or not pw or not new_email:
+                        st.toast("Semua kolom harus diisi.")
+                    elif any(u.get("email", "").lower() == new_email.lower() for u in users.values()):
+                        st.toast("❌ Email sudah digunakan.")
+                    elif not user.isalnum() or not user.islower() or " " in user:
+                        st.toast("Gunakan huruf kecil/angka tanpa spasi.")
+                    elif user in users:
+                        st.toast("Username sudah terdaftar.")
                     else:
-                        st.error("Gagal mengirim OTP.")
-        if st.session_state.get("otp_sent_daftar"):
-            input_otp = st.text_input("Masukkan Kode OTP")
-            if st.button("Daftar"):
-                if input_otp != st.session_state.get("otp_code_daftar", ""):
-                    st.error("Kode OTP salah.")
-                elif not user or not pw or not new_email or not full_name:
-                    st.error("Semua kolom harus diisi.")
-                else:
-                    db.reference("users").child(user).set({
-                        "nama": full_name,
-                        "password": hash_password(pw),
-                        "email": new_email
-                    })
-                    st.success("Akun berhasil dibuat. Silakan login.")
-                    # Reset session
-                    st.session_state.otp_sent_daftar = False
-                    st.session_state.otp_code_daftar = ""
-                    st.session_state.update({"Pilih": "Login", "mode": "Login"})
-                    st.stop()
+                        otp = generate_otp()
+                        if send_newotp_email(new_email, otp):
+                            st.session_state.otp_sent_daftar = True
+                            st.session_state.otp_code_daftar = otp
+                            st.success("OTP dikirim ke email.")
+                        else:
+                            st.error("Gagal mengirim OTP.")
+
+            if st.session_state.get("otp_sent_daftar"):
+                input_otp = st.text_input("Masukkan Kode OTP")
+                if st.button("Daftar"):
+                    if input_otp != st.session_state.get("otp_code_daftar", ""):
+                        st.error("OTP salah.")
+                    elif not user or not pw or not new_email or not full_name:
+                        st.error("Semua kolom harus diisi.")
+                    else:
+                        db.reference("users").child(user).set({
+                            "nama": full_name,
+                            "password": hash_password(pw),
+                            "email": new_email
+                        })
+                        st.success("Akun berhasil dibuat. Silakan login.")
+                        st.session_state.update({
+                            "otp_sent_daftar": False,
+                            "otp_code_daftar": "",
+                            "Pilih": "Login",
+                            "mode": "Login"
+                        })
+                        st.rerun()
+
 
 def proses_logout():
     st.session_state.login = False

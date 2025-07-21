@@ -259,6 +259,9 @@ def halaman_login_daftar():
                             "mode": "Login"
                         })
                         st.rerun()
+if st.button("⬅️ Kembali ke Beranda"):
+        st.session_state["halaman"] = "beranda"
+        st.rerun()
 
 if st.session_state["halaman"] == "beranda":
     # Halaman Utama

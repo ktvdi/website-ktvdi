@@ -305,38 +305,37 @@ def proses_logout():
     st.session_state.login_error = False
 
     # Sidebar untuk user login
-if st.session_state["login"]:
-    username = st.session_state["username"]
-    users = db.reference("users").get() or {}
-    user_data = users.get(username, {})
-    nama_pengguna = user_data.get("nama", username)
+    if st.session_state["login"]:
+        username = st.session_state["username"]
+        users = db.reference("users").get() or {}
+        user_data = users.get(username, {})
+        nama_pengguna = user_data.get("nama", username)
 
-    st.sidebar.title(f"Hai, {nama_pengguna}!")
-    st.sidebar.button("🚪 Logout", on_click=proses_logout)
+        st.sidebar.title(f"Hai, {nama_pengguna}!")
+        st.sidebar.button("🚪 Logout", on_click=proses_logout)
 
-    st.markdown("## ✍️ Tambahkan Data Siaran")
+        st.markdown("## ✍️ Tambahkan Data Siaran")
 
-    # Pilih provinsi
-    provinsi_data = db.reference("provinsi").get()
-    if provinsi_data:
-        provinsi_list = sorted(provinsi_data.values())
-        provinsi = st.selectbox("Pilih Provinsi", provinsi_list)
-    else:
-        st.warning("Belum ada data provinsi.")
-
-    # Input wilayah, mux, siaran
-    wilayah = st.text_input("Masukkan Wilayah Layanan")
-    mux = st.text_input("Masukkan Nama Penyelenggara MUX")
-    siaran_input = st.text_area(
-        "Masukkan Daftar Siaran (pisahkan dengan koma)",
-        placeholder="Contoh: RCTI, SCTV, Indosiar"
-    )
-
-    if st.button("Simpan Data"):
-        if not (provinsi and wilayah and mux and siaran_input):
-            st.warning("Harap isi semua kolom.")
+        # Pilih provinsi
+        provinsi_data = db.reference("provinsi").get()
+        if provinsi_data:
+            provinsi_list = sorted(provinsi_data.values())
+            provinsi = st.selectbox("Pilih Provinsi", provinsi_list)
         else:
-            siaran_list = [s.strip() for s in siaran_input.split(",") if s.strip()]
-            db.reference(f"siaran/{provinsi}/{wilayah}/{mux}").set(siaran_list)
-            st.success("Data berhasil disimpan!")
+            st.warning("Belum ada data provinsi.")
 
+        # Input wilayah, mux, siaran
+        wilayah = st.text_input("Masukkan Wilayah Layanan")
+        mux = st.text_input("Masukkan Nama Penyelenggara MUX")
+        siaran_input = st.text_area(
+            "Masukkan Daftar Siaran (pisahkan dengan koma)",
+            placeholder="Contoh: RCTI, SCTV, Indosiar"
+        )
+
+        if st.button("Simpan Data"):
+            if not (provinsi and wilayah and mux and siaran_input):
+                st.warning("Harap isi semua kolom.")
+            else:
+                siaran_list = [s.strip() for s in siaran_input.split(",") if s.strip()]
+                db.reference(f"siaran/{provinsi}/{wilayah}/{mux}").set(siaran_list)
+                st.success("Data berhasil disimpan!")

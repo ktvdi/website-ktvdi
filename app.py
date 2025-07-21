@@ -185,9 +185,11 @@ def halaman_login_daftar():
 
                     if st.button("Reset Password"):
                         if input_otp != st.session_state.get("otp_code", ""):
-                            st.error("OTP salah.")
+                            st.toast("OTP salah.")
                         elif not new_pw:
-                            st.error("Password tidak boleh kosong.")
+                            st.toast("Password tidak boleh kosong.")
+                        elif len(pw) < 6:
+                            st.toast("Password minimal 6 karakter.")
                         else:
                             username = st.session_state.reset_username
                             db.reference("users").child(username).update({

@@ -306,8 +306,7 @@ if is_logged_in and username:
     nama_pengguna = user_data.get("nama", username)
     st.sidebar.title(f"Hai, {nama_pengguna}!")
     st.sidebar.button("Logout", on_click=proses_logout)
-
-    if st.session_state.get("login", False):
+    
     st.markdown("## ✍️ Tambahkan Data Siaran")
 
     # Pilih provinsi dari Firebase
@@ -339,6 +338,3 @@ if is_logged_in and username:
             data_manual[provinsi][wilayah][mux] = siaran_list
 
             st.success("Data berhasil disimpan!")
-else:
-    st.info("🔒 Silakan login untuk menambahkan data siaran TV Digital.")
-

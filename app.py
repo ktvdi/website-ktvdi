@@ -26,36 +26,6 @@ st.session_state.setdefault("page", "home")
 
 st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
 
-if st.session_state.get("login"):
-    st.subheader("➕ Tambahkan Provinsi Baru")
-
-    # Input nama provinsi
-    prov_nama = st.text_input("Nama Provinsi", placeholder="Contoh: Sulawesi Selatan")
-
-    # ID dibuat otomatis dari nama provinsi (slugify)
-    def slugify(nama):
-        return nama.strip().lower().replace(" ", "_")
-
-    if prov_nama:
-        prov_id = slugify(prov_nama)
-        st.info(f"ID Provinsi Otomatis: `{prov_id}`")
-    else:
-        prov_id = ""
-
-    # Tombol simpan
-    if st.button("Simpan Provinsi"):
-        if prov_nama:
-            # Cek apakah sudah ada
-            existing = db.reference(f"provinsi/{prov_id}").get()
-            if existing:
-                st.warning(f"Provinsi dengan ID `{prov_id}` sudah ada di database.")
-            else:
-                db.reference(f"provinsi/{prov_id}").set(prov_nama)
-                st.success(f"Provinsi '{prov_nama}' berhasil ditambahkan dengan ID `{prov_id}`.")
-        else:
-            st.warning("Harap isi nama provinsi.")
-
-
 def generate_otp():
     return str(random.randint(100000, 999999))
 

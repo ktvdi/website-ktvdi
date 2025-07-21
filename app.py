@@ -229,7 +229,7 @@ if not st.session_state.get("login"):
                 users = users_ref.get() or {}
                 invite_ref = db.reference("invite")
                 invite = invite_ref.get() or {"aktif": ""}
-                if not user or not pw or not kode or not new_email:
+                if not user or not pw or not new_email:
                     st.toast("Semua kolom harus diisi.")
                 elif any(u.get("email", "").lower() == new_email.lower() for u in users.values()):
                     st.toast("❌ Email sudah digunakan oleh pengguna lain.")

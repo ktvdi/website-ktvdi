@@ -27,6 +27,12 @@ st.session_state.setdefault("page", "home")
 st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
 st.header("📺 Data Siaran TV Digital di Indonesia")
 
+if not st.session_state["login"]:
+    st.info("Untuk menambahkan data, silakan login terlebih dahulu.")
+    if st.button("🔐 Login / Daftar Akun"):
+        st.session_state["halaman"] = "login"
+        st.rerun()
+
 # Ambil data provinsi dari Firebase
 provinsi_data = db.reference("provinsi").get()
 
@@ -117,6 +123,12 @@ if "login_attempted" not in st.session_state:
     st.session_state.login_attempted = False
 if "login_triggered" not in st.session_state:
     st.session_state.login_triggered = False
+
+# Atur session state untuk halaman default
+if "halaman" not in st.session_state:
+    st.session_state["halaman"] = "beranda"
+if "login" not in st.session_state:
+    st.session_state["login"] = False
 
 if not st.session_state.login_triggered:
     st.session_state.login_error = ""

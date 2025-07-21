@@ -222,7 +222,6 @@ if not st.session_state.get("login"):
         new_email = st.text_input("Email:", key="email_input")
         user = st.text_input("Username Baru (huruf kecil/angka tanpa spasi)")
         pw = st.text_input("Password Baru", type="password")
-        kode = st.text_input("Kode Undangan")
 
         if not st.session_state.get("otp_sent_daftar"):
             if st.button("Kirim OTP ke Email"):
@@ -238,8 +237,6 @@ if not st.session_state.get("login"):
                     st.toast("Username hanya boleh huruf kecil dan angka tanpa spasi.")
                 elif user in users:
                     st.toast("Username sudah ada.")
-                elif kode != invite["aktif"]:
-                    st.toast("Kode undangan tidak valid.")
                 else:
                     otp = generate_otp()
                     if send_newotp_email(new_email, otp):

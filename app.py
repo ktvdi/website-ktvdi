@@ -289,7 +289,7 @@ if is_logged_in and username:
     st.markdown("## ✍️ Tambahkan Data Siaran")
 
     # Pilih provinsi dari Firebase
-    provinsi = st.selectbox("Pilih Provinsi", provinsi_list)
+    provinsi = st.selectbox("Pilih Provinsi", provinsi)
 
     # Input wilayah layanan
     wilayah = st.text_input("Masukkan Wilayah Layanan")

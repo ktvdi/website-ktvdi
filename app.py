@@ -26,6 +26,19 @@ st.session_state.setdefault("page", "home")
 
 st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
 
+if st.session_state.get("login"):
+    st.subheader("➕ Tambahkan Provinsi Baru")
+    prov_id = st.text_input("ID Provinsi (contoh: sulawesi_selatan)")
+    prov_nama = st.text_input("Nama Provinsi (contoh: Sulawesi Selatan)")
+
+    if st.button("Simpan Provinsi"):
+        if prov_id and prov_nama:
+            db.reference(f"provinsi/{prov_id}").set(prov_nama)
+            st.success(f"Provinsi '{prov_nama}' berhasil ditambahkan.")
+        else:
+            st.warning("Harap isi kedua kolom.")
+
+
 def generate_otp():
     return str(random.randint(100000, 999999))
 

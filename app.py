@@ -145,7 +145,7 @@ if not st.session_state.get("login"):
 
     if mode == "Login":
         if not st.session_state.lupa_password:
-            st.header("Login Anggota Karang Taruna")
+            st.header("Login Akun KTVDI")
             st.text_input("Username", key="login_user")
             st.text_input("Password", type="password", key="login_pass")
             user_input = st.session_state.get("login_user", "")

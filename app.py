@@ -1,4 +1,3 @@
-
 import streamlit as st
 import json
 import os
@@ -23,9 +22,9 @@ st.session_state.setdefault("otp_code", "")
 st.session_state.setdefault("reset_username", "")
 st.session_state.setdefault("login_attempted", False)
 st.session_state.setdefault("login_error", "")
+st.session_state.setdefault("page", "home")
 
 st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
-
 
 def generate_otp():
     return str(random.randint(100000, 999999))
@@ -97,18 +96,43 @@ if not st.session_state.login_triggered:
 else:
     st.session_state.login_triggered = False
 
-# Admin Akun Default
 # Ambil data users dari Firebase
 users_ref = db.reference("users")
 users = users_ref.get() or {}
 
-# Tambahkan field email jika belum ada
-for uname, udata in users.items():
-    if "email" not in udata:
-        users[uname]["email"] = ""  # atau None
+if st.session_state["page"] == "home":
+    st.header("📺 Data Siaran TV Digital di Indonesia")
 
-# Simpan kembali ke Firebase
-users_ref.set(users)
+    # Ambil data provinsi dari Firebase
+    ref = db.reference("/provinsi")
+    provinsi_data = ref.get()
+
+    if provinsi_data:
+        provinsi_list = sorted([prov for prov in provinsi_data.values()])
+        provinsi = st.selectbox("Pilih Provinsi", provinsi_list)
+
+        if provinsi in data_manual:
+            wilayah_list = sorted(data_manual[provinsi].keys())
+            wilayah = st.selectbox("Pilih Wilayah Layanan", wilayah_list)
+
+            if wilayah:
+                mux_list = sorted(data_manual[provinsi][wilayah].keys())
+                mux = st.selectbox("Pilih Penyelenggara MUX", mux_list)
+
+                if mux:
+                    siaran_list = data_manual[provinsi][wilayah][mux]
+                    st.subheader("Daftar Siaran:")
+                    for siaran in siaran_list:
+                        st.write(f"- {siaran}")
+        else:
+            st.warning("Data belum tersedia untuk provinsi ini.")
+
+    # Tombol login jika belum login
+    if not st.session_state["login"]:
+        if st.button("🔐 Login untuk Tambah Data"):
+            st.session_state["page"] = "login"
+            st.experimental_rerun()
+
 
 def proses_login():
     user = st.session_state.get("login_user","").strip()
@@ -282,3 +306,39 @@ if is_logged_in and username:
     nama_pengguna = user_data.get("nama", username)
     st.sidebar.title(f"Hai, {nama_pengguna}!")
     st.sidebar.button("Logout", on_click=proses_logout)
+
+    if st.session_state.get("login", False):
+    st.markdown("## ✍️ Tambahkan Data Siaran")
+
+    # Pilih provinsi dari Firebase
+    provinsi = st.selectbox("Pilih Provinsi", provinsi_list)
+
+    # Input wilayah layanan
+    wilayah = st.text_input("Masukkan Wilayah Layanan")
+
+    # Input penyelenggara MUX
+    mux = st.text_input("Masukkan Nama Penyelenggara MUX")
+
+    # Input daftar siaran
+    siaran_input = st.text_area("Masukkan Daftar Siaran (pisahkan dengan koma)",
+                                placeholder="Contoh: RCTI, SCTV, Indosiar")
+
+    # Tombol simpan
+    if st.button("Simpan Data"):
+        if not (provinsi and wilayah and mux and siaran_input):
+            st.warning("Harap isi semua kolom.")
+        else:
+            # Pisahkan daftar siaran jadi list
+            siaran_list = [s.strip() for s in siaran_input.split(",") if s.strip()]
+            
+            # Tambahkan ke data lokal sementara (atau bisa simpan ke Firebase)
+            if provinsi not in data_manual:
+                data_manual[provinsi] = {}
+            if wilayah not in data_manual[provinsi]:
+                data_manual[provinsi][wilayah] = {}
+            data_manual[provinsi][wilayah][mux] = siaran_list
+
+            st.success("Data berhasil disimpan!")
+else:
+    st.info("🔒 Silakan login untuk menambahkan data siaran TV Digital.")
+

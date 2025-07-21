@@ -277,7 +277,7 @@ if st.session_state["halaman"] == "beranda":
     provinsi_data = db.reference("provinsi").get()
     if provinsi_data:
         provinsi_list = sorted(provinsi_data.values())
-        selected_provinsi = st.selectbox("Pilih Provinsi", provinsi_list)
+        selected_provinsi = st.selectbox("Pilih Provinsi", provinsi_list, key="provinsi_filter")
         siaran_data = db.reference(f"siaran/{selected_provinsi}").get()
 
         if siaran_data:
@@ -320,7 +320,7 @@ if st.session_state.get("login"):
     provinsi_data = db.reference("provinsi").get()
     if provinsi_data:
         provinsi_list = sorted(provinsi_data.values())
-        provinsi = st.selectbox("Pilih Provinsi", provinsi_list)
+        provinsi = st.selectbox("Pilih Provinsi", provinsi_list, key="provinsi_input")
     else:
         st.warning("Belum ada data provinsi.")
         provinsi = ""

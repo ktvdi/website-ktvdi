@@ -300,6 +300,6 @@ if is_logged_in and username:
             # Pisahkan daftar siaran jadi list
             siaran_list = [s.strip() for s in siaran_input.split(",") if s.strip()]
             
-            db.reference(f"siaran/{prov_id}/{wilayah}/{mux}").set(siaran_list)
+            db.reference(f"siaran/{provinsi_id}/{wilayah}/{mux}").set(siaran_list)
 
             st.success("Data berhasil disimpan!")

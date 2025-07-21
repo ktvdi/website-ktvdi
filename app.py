@@ -220,7 +220,7 @@ if not st.session_state.get("login"):
         st.header("Daftar Akun Baru")
         full_name = st.text_input("Nama Lengkap")
         new_email = st.text_input("Email:", key="email_input")
-        user = st.text_input("Username Baru (huruf kecil/angka tanpa spasi)")
+        user = st.text_input("Username Baru (huruf kecil/angka tanpa spasi) contoh:koyjang45")
         pw = st.text_input("Password Baru", type="password")
 
         if not st.session_state.get("otp_sent_daftar"):

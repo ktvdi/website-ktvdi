@@ -281,24 +281,4 @@ if is_logged_in and username:
 
     nama_pengguna = user_data.get("nama", username)
     st.sidebar.title(f"Hai, {nama_pengguna}!")
-
-    if not user_data.get("email"):
-        st.sidebar.warning("💡 Masukkan email untuk keamanan akun Anda.")
-        new_email = st.sidebar.text_input("Masukkan email:")
-        if st.sidebar.button("Simpan Email"):
-            if not new_email:
-                st.sidebar.error("❌ Email tidak boleh kosong.")
-            elif not re.match(r"[^@]+@[^@]+\.[^@]+", new_email):
-                st.sidebar.error("❌ Format email tidak valid.")
-            elif any(
-                u != username and udata.get("email", "").lower() == new_email.lower()
-                for u, udata in users.items()
-            ):
-                st.sidebar.error("❌ Email sudah digunakan oleh pengguna lain.")
-            else:
-                users_ref.child(username).update({"email": new_email})
-                st.sidebar.success("✅ Email berhasil disimpan.")
-                st.rerun()  # reload setelah simpan email
-
-    else:
-        st.sidebar.button("Logout", on_click=proses_logout)
+    st.sidebar.button("Logout", on_click=proses_logout)

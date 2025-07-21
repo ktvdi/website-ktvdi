@@ -100,40 +100,6 @@ else:
 users_ref = db.reference("users")
 users = users_ref.get() or {}
 
-if st.session_state["page"] == "home":
-    st.header("📺 Data Siaran TV Digital di Indonesia")
-
-    # Ambil data provinsi dari Firebase
-    ref = db.reference("/provinsi")
-    provinsi_data = ref.get()
-
-    if provinsi_data:
-        provinsi_list = sorted([prov for prov in provinsi_data.values()])
-        provinsi = st.selectbox("Pilih Provinsi", provinsi_list)
-
-        if provinsi in data_manual:
-            wilayah_list = sorted(data_manual[provinsi].keys())
-            wilayah = st.selectbox("Pilih Wilayah Layanan", wilayah_list)
-
-            if wilayah:
-                mux_list = sorted(data_manual[provinsi][wilayah].keys())
-                mux = st.selectbox("Pilih Penyelenggara MUX", mux_list)
-
-                if mux:
-                    siaran_list = data_manual[provinsi][wilayah][mux]
-                    st.subheader("Daftar Siaran:")
-                    for siaran in siaran_list:
-                        st.write(f"- {siaran}")
-        else:
-            st.warning("Data belum tersedia untuk provinsi ini.")
-
-    # Tombol login jika belum login
-    if not st.session_state["login"]:
-        if st.button("🔐 Login untuk Tambah Data"):
-            st.session_state["page"] = "login"
-            st.experimental_rerun()
-
-
 def proses_login():
     user = st.session_state.get("login_user","").strip()
     pw = st.session_state.get("login_pass","").strip()

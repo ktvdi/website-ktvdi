@@ -386,7 +386,7 @@ def display_manage_data_form(selected_provinsi, selected_wilayah, selected_mux, 
 
 # --- HALAMAN UTAMA APLIKASI ---
 
-st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
+st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONEggSIA 🇮🇩")
 display_sidebar()
 
 # --- ROUTING HALAMAN ---

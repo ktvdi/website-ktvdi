@@ -293,6 +293,97 @@ def display_add_data_form():
                 except Exception as e:
                     st.error(f"Gagal menyimpan data: {e}")
 
+def display_manage_data_form(selected_provinsi, selected_wilayah, selected_mux, mux_data):
+    """Menampilkan form untuk mengelola (edit/hapus) data siaran."""
+    st.markdown("---")
+    st.markdown("## ⚙️ Kelola Data Siaran")
+
+    if st.session_state.edit_mode:
+        st.subheader("📝 Edit Data Siaran")
+        edit_data = st.session_state.edit_data
+        
+        # Default values for the edit form
+        default_wilayah = edit_data.get("wilayah", "")
+        default_mux = edit_data.get("mux", "")
+        default_siaran = ", ".join(edit_data.get("siaran", []))
+
+        with st.form("edit_form", clear_on_submit=False):
+            # Provinsi tidak bisa diubah langsung dari form edit ini, karena struktur data Firebase
+            st.text_input("Provinsi", value=selected_provinsi, disabled=True)
+            new_wilayah = st.text_input("Wilayah Layanan", value=default_wilayah, key="edit_wilayah")
+            new_mux = st.text_input("Penyelenggara MUX", value=default_mux, key="edit_mux")
+            new_siaran_input = st.text_area(
+                "Daftar Siaran (pisahkan dengan koma)",
+                value=default_siaran,
+                key="edit_siaran"
+            )
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.form_submit_button("Simpan Perubahan"):
+                    if not all([new_wilayah, new_mux, new_siaran_input]):
+                        st.warning("Harap isi semua kolom.")
+                    else:
+                        new_wilayah_clean = new_wilayah.strip()
+                        new_mux_clean = new_mux.strip()
+                        new_siaran_list = sorted([s.strip() for s in new_siaran_input.split(",") if s.strip()])
+
+                        if not new_siaran_list:
+                            st.warning("Daftar siaran tidak boleh kosong.")
+                        else:
+                            try:
+                                # Hapus data lama jika ada perubahan di wilayah atau mux
+                                if default_wilayah != new_wilayah_clean or default_mux != new_mux_clean:
+                                    db.reference(f"siaran/{selected_provinsi}/{default_wilayah}/{default_mux}").delete()
+                                    st.toast("Data lama dihapus.")
+
+                                # Simpan data baru
+                                db.reference(f"siaran/{selected_provinsi}/{new_wilayah_clean}/{new_mux_clean}").set(new_siaran_list)
+                                st.success("Data berhasil diperbarui!")
+                                st.session_state.edit_mode = False
+                                st.session_state.edit_data = None
+                                st.balloons()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Gagal memperbarui data: {e}")
+            with col2:
+                if st.form_submit_button("Batal Edit"):
+                    st.session_state.edit_mode = False
+                    st.session_state.edit_data = None
+                    st.rerun()
+    else:
+        st.info("Pilih data di bawah untuk mengedit atau menghapus.")
+        # Tampilkan daftar data yang bisa diedit/dihapus
+        if mux_data:
+            for mux_key, siaran_list in mux_data.items():
+                st.subheader(f"📡 {mux_key}")
+                for tv in siaran_list:
+                    st.write(f"- {tv}")
+                
+                col_edit_del_1, col_edit_del_2 = st.columns(2)
+                with col_edit_del_1:
+                    if st.button(f"✏️ Edit {mux_key}", key=f"edit_{selected_provinsi}_{selected_wilayah}_{mux_key}"):
+                        st.session_state.edit_mode = True
+                        st.session_state.edit_data = {
+                            "provinsi": selected_provinsi,
+                            "wilayah": selected_wilayah,
+                            "mux": mux_key,
+                            "siaran": siaran_list
+                        }
+                        st.rerun()
+                with col_edit_del_2:
+                    if st.button(f"🗑️ Hapus {mux_key}", key=f"delete_{selected_provinsi}_{selected_wilayah}_{mux_key}"):
+                        if st.warning(f"Anda yakin ingin menghapus data {mux_key} di {selected_wilayah}, {selected_provinsi}?"):
+                            try:
+                                db.reference(f"siaran/{selected_provinsi}/{selected_wilayah}/{mux_key}").delete()
+                                st.success(f"Data {mux_key} berhasil dihapus!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Gagal menghapus data: {e}")
+                st.markdown("---")
+        else:
+            st.info("Tidak ada data siaran untuk dikelola di wilayah ini.")
+
 # --- HALAMAN UTAMA APLIKASI ---
 
 st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")

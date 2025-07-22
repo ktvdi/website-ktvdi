@@ -7,6 +7,7 @@ import time
 from email.mime.text import MIMEText
 from firebase_admin import credentials, db
 from pytz import timezone
+from datetime import datetime # Import datetime
 
 # --- KONFIGURASI DAN INISIALISASI ---
 
@@ -56,7 +57,7 @@ WIB = timezone("Asia/Jakarta")
 
 def hash_password(password):
     """Meng-hash password menggunakan SHA256."""
-    return hashlib.sha256(password.encode()).hexdigest()
+    return hashlib.S_SHA256(password.encode()).hexdigest()
 
 def generate_otp():
     """Menghasilkan kode OTP 6 digit secara acak."""
@@ -260,7 +261,7 @@ def display_registration_form(users):
 def display_add_data_form():
     """Menampilkan form untuk menambahkan data siaran (hanya untuk user login)."""
     st.markdown("---")
-    st.markdown("## ✍️ Tambahkan atau Perbarui Data Siaran")
+    st.markdown("## ✍️ Tambahkan Data Siaran Baru")
 
     provinsi_data = db.reference("provinsi").get()
     if not provinsi_data:
@@ -269,8 +270,8 @@ def display_add_data_form():
 
     provinsi_list = sorted(provinsi_data.values())
     provinsi = st.selectbox("Pilih Provinsi", provinsi_list, key="provinsi_input_add")
-    wilayah = st.text_input("Masukkan Wilayah Layanan", placeholder="Contoh: Kalimantan Timur-1", key="wilayah_input_add")
-    mux = st.text_input("Masukkan Penyelenggara MUX", placeholder="Contoh: Metro TV", key="mux_input_add")
+    wilayah = st.text_input("Masukkan Wilayah Layanan", placeholder="Contoh: Jawa Timur-1", key="wilayah_input_add")
+    mux = st.text_input("Masukkan Penyelenggara MUX", placeholder="Contoh: 27 UHF - Metro TV", key="mux_input_add")
     siaran_input = st.text_area(
         "Masukkan Daftar Siaran (pisahkan dengan koma)",
         placeholder="Contoh: Metro TV, Magna Channel, BN Channel",
@@ -281,7 +282,6 @@ def display_add_data_form():
         if not all([provinsi, wilayah, mux, siaran_input]):
             st.warning("Harap isi semua kolom.")
         else:
-            # Membersihkan dan memvalidasi input
             wilayah_clean = wilayah.strip()
             mux_clean = mux.strip()
             siaran_list = sorted([s.strip() for s in siaran_input.split(",") if s.strip()])
@@ -290,14 +290,32 @@ def display_add_data_form():
                 st.warning("Daftar siaran tidak boleh kosong.")
             else:
                 try:
-                    db.reference(f"siaran/{provinsi}/{wilayah_clean}/{mux_clean}").set(siaran_list)
+                    # Ambil nama pengguna yang login
+                    updater_username = st.session_state.username
+                    users_ref = db.reference("users").child(updater_username).get()
+                    updater_name = users_ref.get("nama", updater_username) # Dapatkan nama lengkap jika ada
+                    
+                    # Dapatkan waktu saat ini dalam WIB
+                    now_wib = datetime.now(WIB)
+                    updated_date = now_wib.strftime("%d-%m-%Y")
+                    updated_time = now_wib.strftime("%H:%M:%S WIB")
+
+                    data_to_save = {
+                        "siaran": siaran_list,
+                        "last_updated_by_username": updater_username,
+                        "last_updated_by_name": updater_name,
+                        "last_updated_date": updated_date,
+                        "last_updated_time": updated_time
+                    }
+                    
+                    db.reference(f"siaran/{provinsi}/{wilayah_clean}/{mux_clean}").set(data_to_save)
                     st.success("Data berhasil disimpan!")
                     st.balloons()
                     st.rerun() # Refresh tampilan setelah simpan
                 except Exception as e:
                     st.error(f"Gagal menyimpan data: {e}")
 
-def display_manage_data_form(selected_provinsi, selected_wilayah, selected_mux, mux_data):
+def display_manage_data_form(selected_provinsi, selected_wilayah, mux_data):
     """Menampilkan form untuk mengelola (edit/hapus) data siaran."""
     st.markdown("---")
     st.markdown("## ⚙️ Kelola Data Siaran")
@@ -309,7 +327,8 @@ def display_manage_data_form(selected_provinsi, selected_wilayah, selected_mux, 
         # Default values for the edit form
         default_wilayah = edit_data.get("wilayah", "")
         default_mux = edit_data.get("mux", "")
-        default_siaran = ", ".join(edit_data.get("siaran", []))
+        default_siaran_list = edit_data.get("siaran", [])
+        default_siaran = ", ".join(default_siaran_list)
 
         with st.form("edit_form", clear_on_submit=False):
             # Provinsi tidak bisa diubah langsung dari form edit ini, karena struktur data Firebase
@@ -336,13 +355,34 @@ def display_manage_data_form(selected_provinsi, selected_wilayah, selected_mux, 
                             st.warning("Daftar siaran tidak boleh kosong.")
                         else:
                             try:
-                                # Hapus data lama jika ada perubahan di wilayah atau mux
+                                # Ambil nama pengguna yang login
+                                updater_username = st.session_state.username
+                                users_ref = db.reference("users").child(updater_username).get()
+                                updater_name = users_ref.get("nama", updater_username) # Dapatkan nama lengkap jika ada
+                                
+                                # Dapatkan waktu saat ini dalam WIB
+                                now_wib = datetime.now(WIB)
+                                updated_date = now_wib.strftime("%d-%m-%Y")
+                                updated_time = now_wib.strftime("%H:%M:%S WIB")
+
+                                data_to_update = {
+                                    "siaran": new_siaran_list,
+                                    "last_updated_by_username": updater_username,
+                                    "last_updated_by_name": updater_name,
+                                    "last_updated_date": updated_date,
+                                    "last_updated_time": updated_time
+                                }
+
+                                # Hapus data lama jika ada perubahan di wilayah atau mux (karena ini mengubah path)
                                 if default_wilayah != new_wilayah_clean or default_mux != new_mux_clean:
                                     db.reference(f"siaran/{selected_provinsi}/{default_wilayah}/{default_mux}").delete()
                                     st.toast("Data lama dihapus.")
-
-                                # Simpan data baru
-                                db.reference(f"siaran/{selected_provinsi}/{new_wilayah_clean}/{new_mux_clean}").set(new_siaran_list)
+                                    # Simpan data baru ke path yang diperbarui
+                                    db.reference(f"siaran/{selected_provinsi}/{new_wilayah_clean}/{new_mux_clean}").set(data_to_update)
+                                else:
+                                    # Perbarui data di path yang sama
+                                    db.reference(f"siaran/{selected_provinsi}/{new_wilayah_clean}/{new_mux_clean}").update(data_to_update)
+                                    
                                 st.success("Data berhasil diperbarui!")
                                 st.session_state.edit_mode = False
                                 st.session_state.edit_data = None
@@ -359,10 +399,18 @@ def display_manage_data_form(selected_provinsi, selected_wilayah, selected_mux, 
         st.info("Pilih data di bawah untuk mengedit atau menghapus.")
         # Tampilkan daftar data yang bisa diedit/dihapus
         if mux_data:
-            for mux_key, siaran_list in mux_data.items():
+            for mux_key, mux_details in mux_data.items():
+                siaran_list = mux_details.get("siaran", [])
+                last_updated_by_name = mux_details.get("last_updated_by_name", "N/A")
+                last_updated_date = mux_details.get("last_updated_date", "N/A")
+                last_updated_time = mux_details.get("last_updated_time", "N/A")
+
                 st.subheader(f"📡 {mux_key}")
                 for tv in siaran_list:
                     st.write(f"- {tv}")
+                
+                # Menampilkan keterangan "Diperbarui oleh..."
+                st.markdown(f"<p style='font-size: small; color: grey;'>Diperbarui oleh: <b>{last_updated_by_name}</b> pada {last_updated_date} pukul {last_updated_time}</p>", unsafe_allow_html=True)
                 
                 col_edit_del_1, col_edit_del_2 = st.columns(2)
                 with col_edit_del_1:
@@ -372,11 +420,16 @@ def display_manage_data_form(selected_provinsi, selected_wilayah, selected_mux, 
                             "provinsi": selected_provinsi,
                             "wilayah": selected_wilayah,
                             "mux": mux_key,
-                            "siaran": siaran_list
+                            "siaran": siaran_list, # Kirim list siaran yang sudah bersih
+                            "last_updated_by_username": mux_details.get("last_updated_by_username"),
+                            "last_updated_by_name": mux_details.get("last_updated_by_name"),
+                            "last_updated_date": mux_details.get("last_updated_date"),
+                            "last_updated_time": mux_details.get("last_updated_time")
                         }
                         st.rerun()
                 with col_edit_del_2:
                     if st.button(f"🗑️ Hapus {mux_key}", key=f"delete_{selected_provinsi}_{selected_wilayah}_{mux_key}"):
+                        # Konfirmasi sebelum menghapus
                         if st.warning(f"Anda yakin ingin menghapus data {mux_key} di {selected_wilayah}, {selected_provinsi}?"):
                             try:
                                 db.reference(f"siaran/{selected_provinsi}/{selected_wilayah}/{mux_key}").delete()
@@ -415,17 +468,35 @@ if st.session_state.halaman == "beranda":
             # Add MUX operator filter
             selected_mux = st.selectbox("Pilih Penyelenggara MUX", ["Semua MUX"] + mux_list, key="select_mux")
 
+            # Tampilkan data sesuai filter
             if selected_mux == "Semua MUX":
-                for mux in mux_list:
-                    st.subheader(f"📡 {mux}")
-                    for tv in mux_data[mux]:
+                for mux_key, mux_details in mux_data.items():
+                    siaran_list = mux_details.get("siaran", []) # Ambil daftar siaran
+                    last_updated_by_name = mux_details.get("last_updated_by_name", "N/A")
+                    last_updated_date = mux_details.get("last_updated_date", "N/A")
+                    last_updated_time = mux_details.get("last_updated_time", "N/A")
+
+                    st.subheader(f"📡 {mux_key}")
+                    for tv in siaran_list:
                         st.write(f"- {tv}")
+                    st.markdown(f"<p style='font-size: small; color: grey;'>Diperbarui oleh: <b>{last_updated_by_name}</b> pada {last_updated_date} pukul {last_updated_time}</p>", unsafe_allow_html=True)
                     st.markdown("---")
             else:
-                st.subheader(f"📡 {selected_mux}")
-                for tv in mux_data[selected_mux]:
-                    st.write(f"- {tv}")
-                st.markdown("---")
+                mux_details = mux_data.get(selected_mux, {})
+                siaran_list = mux_details.get("siaran", [])
+                last_updated_by_name = mux_details.get("last_updated_by_name", "N/A")
+                last_updated_date = mux_details.get("last_updated_date", "N/A")
+                last_updated_time = mux_details.get("last_updated_time", "N/A")
+
+                if siaran_list:
+                    st.subheader(f"📡 {selected_mux}")
+                    for tv in siaran_list:
+                        st.write(f"- {tv}")
+                    st.markdown(f"<p style='font-size: small; color: grey;'>Diperbarui oleh: <b>{last_updated_by_name}</b> pada {last_updated_date} pukul {last_updated_time}</p>", unsafe_allow_html=True)
+                    st.markdown("---")
+                else:
+                    st.info("Tidak ada data siaran untuk MUX ini.")
+
         else:
             st.info("Belum ada data siaran untuk provinsi ini.")
     else:
@@ -436,7 +507,7 @@ if st.session_state.halaman == "beranda":
         display_add_data_form()
         # Tampilkan form kelola data jika sudah login dan ada data yang dipilih
         if 'selected_provinsi' in locals() and 'selected_wilayah' in locals() and 'mux_data' in locals():
-            display_manage_data_form(selected_provinsi, selected_wilayah, selected_mux, mux_data)
+            display_manage_data_form(selected_provinsi, selected_wilayah, mux_data)
     else:
         st.info("Untuk menambahkan, memperbarui, atau menghapus data, silakan login terlebih dahulu.")
         if st.button("🔐 Login / Daftar Akun"):

@@ -342,6 +342,7 @@ if st.session_state.halaman == "beranda":
         st.info("Untuk menambahkan atau memperbarui data, silakan login terlebih dahulu.")
         if st.button("🔐 Login / Daftar Akun"):
             switch_page("login")
+            st.rerun()
 
 elif st.session_state.halaman == "login":
     users_ref = db.reference("users")
@@ -367,3 +368,4 @@ elif st.session_state.halaman == "login":
 
     if st.button("⬅️ Kembali ke Beranda"):
         switch_page("beranda")
+        st.rerun()

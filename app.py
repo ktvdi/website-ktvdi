@@ -270,8 +270,8 @@ def display_add_data_form():
 
     provinsi_list = sorted(provinsi_data.values())
     provinsi = st.selectbox("Pilih Provinsi", provinsi_list, key="provinsi_input_add")
-    wilayah = st.text_input("Masukkan Wilayah Layanan", placeholder="Contoh: KOTA BANDUNG, KABUPATEN BANDUNG", key="wilayah_input_add")
-    mux = st.text_input("Masukkan Penyelenggara MUX", placeholder="Contoh: Metro TV", key="mux_input_add")
+    wilayah = st.text_input("Masukkan Wilayah Layanan", placeholder="Contoh: Jawa Timur-1", key="wilayah_input_add")
+    mux = st.text_input("Masukkan Penyelenggara MUX", placeholder="Contoh: 27 UHF - Metro TV", key="mux_input_add")
     siaran_input = st.text_area(
         "Masukkan Daftar Siaran (pisahkan dengan koma)",
         placeholder="Contoh: Metro TV, Magna Channel, BN Channel",

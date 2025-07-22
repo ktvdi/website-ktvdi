@@ -39,7 +39,9 @@ def initialize_session_state():
         "otp_code": "",
         "reset_username": "",
         "otp_sent_daftar": False,
-        "otp_code_daftar": ""
+        "otp_code_daftar": "",
+        "edit_mode": False, # Menandakan apakah sedang dalam mode edit
+        "edit_data": None # Menyimpan data yang sedang diedit
     }
     for key, value in states.items():
         if key not in st.session_state:
@@ -266,15 +268,16 @@ def display_add_data_form():
         return
 
     provinsi_list = sorted(provinsi_data.values())
-    provinsi = st.selectbox("Pilih Provinsi", provinsi_list, key="provinsi_input")
-    wilayah = st.text_input("Masukkan Wilayah Layanan", placeholder="Contoh: Kalimantan Timur-1")
-    mux = st.text_input("Masukkan Penyelenggara MUX", placeholder="Contoh: Metro TV")
+    provinsi = st.selectbox("Pilih Provinsi", provinsi_list, key="provinsi_input_add")
+    wilayah = st.text_input("Masukkan Wilayah Layanan", placeholder="Contoh: KOTA BANDUNG, KABUPATEN BANDUNG", key="wilayah_input_add")
+    mux = st.text_input("Masukkan Penyelenggara MUX", placeholder="Contoh: Metro TV", key="mux_input_add")
     siaran_input = st.text_area(
         "Masukkan Daftar Siaran (pisahkan dengan koma)",
-        placeholder="Contoh: Metro TV, Magna Channel, BN Channel"
+        placeholder="Contoh: Metro TV, Magna Channel, BN Channel",
+        key="siaran_input_add"
     )
 
-    if st.button("Simpan Data"):
+    if st.button("Simpan Data Baru"):
         if not all([provinsi, wilayah, mux, siaran_input]):
             st.warning("Harap isi semua kolom.")
         else:
@@ -290,6 +293,7 @@ def display_add_data_form():
                     db.reference(f"siaran/{provinsi}/{wilayah_clean}/{mux_clean}").set(siaran_list)
                     st.success("Data berhasil disimpan!")
                     st.balloons()
+                    st.rerun() # Refresh tampilan setelah simpan
                 except Exception as e:
                     st.error(f"Gagal menyimpan data: {e}")
 
@@ -384,9 +388,10 @@ def display_manage_data_form(selected_provinsi, selected_wilayah, selected_mux, 
         else:
             st.info("Tidak ada data siaran untuk dikelola di wilayah ini.")
 
+
 # --- HALAMAN UTAMA APLIKASI ---
 
-st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONEggSIA 🇮🇩")
+st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
 display_sidebar()
 
 # --- ROUTING HALAMAN ---
@@ -429,11 +434,13 @@ if st.session_state.halaman == "beranda":
     # Tampilkan form tambah data jika sudah login
     if st.session_state.login:
         display_add_data_form()
+        # Tampilkan form kelola data jika sudah login dan ada data yang dipilih
+        if 'selected_provinsi' in locals() and 'selected_wilayah' in locals() and 'mux_data' in locals():
+            display_manage_data_form(selected_provinsi, selected_wilayah, selected_mux, mux_data)
     else:
-        st.info("Untuk menambahkan atau memperbarui data, silakan login terlebih dahulu.")
+        st.info("Untuk menambahkan, memperbarui, atau menghapus data, silakan login terlebih dahulu.")
         if st.button("🔐 Login / Daftar Akun"):
             switch_page("login")
-            st.rerun()
 
 elif st.session_state.halaman == "login":
     users_ref = db.reference("users")
@@ -459,4 +466,3 @@ elif st.session_state.halaman == "login":
 
     if st.button("⬅️ Kembali ke Beranda"):
         switch_page("beranda")
-        st.rerun()

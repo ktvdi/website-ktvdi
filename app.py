@@ -269,51 +269,57 @@ def display_add_data_form():
         return
 
     provinsi_list = sorted(provinsi_data.values())
-    provinsi = st.selectbox("Pilih Provinsi", provinsi_list, key="provinsi_input_add")
-    wilayah = st.text_input("Masukkan Wilayah Layanan", placeholder="Contoh: Jawa Timur-1", key="wilayah_input_add")
-    mux = st.text_input("Masukkan Penyelenggara MUX", placeholder="Contoh: 27 UHF - Metro TV", key="mux_input_add")
-    siaran_input = st.text_area(
-        "Masukkan Daftar Siaran (pisahkan dengan koma)",
-        placeholder="Contoh: Metro TV, Magna Channel, BN Channel",
-        key="siaran_input_add"
-    )
+    
+    # Gunakan st.form dengan clear_on_submit=True
+    with st.form("add_data_form", clear_on_submit=True): # <--- Perubahan Kunci di sini
+        provinsi = st.selectbox("Pilih Provinsi", provinsi_list, key="provinsi_input_add")
+        wilayah = st.text_input("Masukkan Wilayah Layanan", placeholder="Contoh: KOTA BANDUNG, KABUPATEN BANDUNG", key="wilayah_input_add")
+        mux = st.text_input("Masukkan Penyelenggara MUX", placeholder="Contoh: Metro TV", key="mux_input_add")
+        siaran_input = st.text_area(
+            "Masukkan Daftar Siaran (pisahkan dengan koma)",
+            placeholder="Contoh: Metro TV, Magna Channel, BN Channel",
+            key="siaran_input_add"
+        )
 
-    if st.button("Simpan Data Baru"):
-        if not all([provinsi, wilayah, mux, siaran_input]):
-            st.warning("Harap isi semua kolom.")
-        else:
-            wilayah_clean = wilayah.strip()
-            mux_clean = mux.strip()
-            siaran_list = sorted([s.strip() for s in siaran_input.split(",") if s.strip()])
-            
-            if not siaran_list:
-                st.warning("Daftar siaran tidak boleh kosong.")
+        submitted = st.form_submit_button("Simpan Data Baru") # <--- Tombol harus ada di dalam st.form
+        
+        if submitted: # <--- Cek apakah form disubmit
+            if not all([provinsi, wilayah, mux, siaran_input]):
+                st.warning("Harap isi semua kolom.")
             else:
-                try:
-                    # Ambil nama pengguna yang login
-                    updater_username = st.session_state.username
-                    users_ref = db.reference("users").child(updater_username).get()
-                    updater_name = users_ref.get("nama", updater_username) # Dapatkan nama lengkap jika ada
-                    
-                    # Dapatkan waktu saat ini dalam WIB
-                    now_wib = datetime.now(WIB)
-                    updated_date = now_wib.strftime("%d-%m-%Y")
-                    updated_time = now_wib.strftime("%H:%M:%S WIB")
+                wilayah_clean = wilayah.strip()
+                mux_clean = mux.strip()
+                siaran_list = sorted([s.strip() for s in siaran_input.split(",") if s.strip()])
+                
+                if not siaran_list:
+                    st.warning("Daftar siaran tidak boleh kosong.")
+                else:
+                    try:
+                        updater_username = st.session_state.username
+                        users_ref = db.reference("users").child(updater_username).get()
+                        updater_name = users_ref.get("nama", updater_username)
+                        
+                        now_wib = datetime.now(WIB)
+                        updated_date = now_wib.strftime("%d-%m-%Y")
+                        updated_time = now_wib.strftime("%H:%M:%S WIB")
 
-                    data_to_save = {
-                        "siaran": siaran_list,
-                        "last_updated_by_username": updater_username,
-                        "last_updated_by_name": updater_name,
-                        "last_updated_date": updated_date,
-                        "last_updated_time": updated_time
-                    }
-                    
-                    db.reference(f"siaran/{provinsi}/{wilayah_clean}/{mux_clean}").set(data_to_save)
-                    st.success("Data berhasil disimpan!")
-                    st.balloons()
-                    st.rerun() # Refresh tampilan setelah simpan
-                except Exception as e:
-                    st.error(f"Gagal menyimpan data: {e}")
+                        data_to_save = {
+                            "siaran": siaran_list,
+                            "last_updated_by_username": updater_username,
+                            "last_updated_by_name": updater_name,
+                            "last_updated_date": updated_date,
+                            "last_updated_time": updated_time
+                        }
+                        
+                        db.reference(f"siaran/{provinsi}/{wilayah_clean}/{mux_clean}").set(data_to_save)
+                        st.success("Data berhasil disimpan!")
+                        st.balloons()
+                        # Karena clear_on_submit=True, input akan otomatis dikosongkan setelah ini.
+                        # Tidak perlu st.rerun() di sini, karena form akan otomatis di-reset.
+                        # st.rerun() jika Anda ingin seluruh halaman di-refresh untuk melihat data baru di daftar utama.
+                        # Jika hanya untuk mengosongkan form, tidak perlu rerun lagi.
+                    except Exception as e:
+                        st.error(f"Gagal menyimpan data: {e}")
 
 # Fungsi untuk menangani tindakan edit dan hapus
 def handle_edit_delete_actions(provinsi, wilayah, mux_key, mux_details_full, current_selected_mux_filter=None):

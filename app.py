@@ -273,8 +273,8 @@ def display_add_data_form():
     # Gunakan st.form dengan clear_on_submit=True
     with st.form("add_data_form", clear_on_submit=True): # <--- Perubahan Kunci di sini
         provinsi = st.selectbox("Pilih Provinsi", provinsi_list, key="provinsi_input_add")
-        wilayah = st.text_input("Masukkan Wilayah Layanan", placeholder="Contoh: KOTA BANDUNG, KABUPATEN BANDUNG", key="wilayah_input_add")
-        mux = st.text_input("Masukkan Penyelenggara MUX", placeholder="Contoh: Metro TV", key="mux_input_add")
+        wilayah = st.text_input("Masukkan Wilayah Layanan", placeholder="Contoh: Jawa Timur-1", key="wilayah_input_add")
+        mux = st.text_input("Masukkan Penyelenggara MUX", placeholder="Contoh: UHF 27 - Metro TV", key="mux_input_add")
         siaran_input = st.text_area(
             "Masukkan Daftar Siaran (pisahkan dengan koma)",
             placeholder="Contoh: Metro TV, Magna Channel, BN Channel",
@@ -314,6 +314,8 @@ def display_add_data_form():
                         db.reference(f"siaran/{provinsi}/{wilayah_clean}/{mux_clean}").set(data_to_save)
                         st.success("Data berhasil disimpan!")
                         st.balloons()
+                        time.sleep(1)
+                        st.rerun()
                         # Karena clear_on_submit=True, input akan otomatis dikosongkan setelah ini.
                         # Tidak perlu st.rerun() di sini, karena form akan otomatis di-reset.
                         # st.rerun() jika Anda ingin seluruh halaman di-refresh untuk melihat data baru di daftar utama.

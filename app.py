@@ -92,7 +92,6 @@ def send_otp_email(receiver_email, otp, purpose="reset"):
 def switch_page(page_name):
     """Fungsi untuk berpindah halaman."""
     st.session_state.halaman = page_name
-    st.rerun()
 
 def proses_logout():
     """Membersihkan session state saat logout."""

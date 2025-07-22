@@ -441,6 +441,7 @@ def display_edit_data_page():
                             st.session_state.edit_mode = False # Reset mode edit
                             st.session_state.edit_data = None # Kosongkan data edit
                             switch_page("beranda") # Kembali ke halaman beranda
+                            st.rerun()
                         except Exception as e:
                             st.error(f"Gagal memperbarui data: {e}")
         with col2:

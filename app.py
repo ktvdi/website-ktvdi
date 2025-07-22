@@ -354,6 +354,7 @@ def handle_edit_delete_actions(provinsi, wilayah, mux_key, mux_details_full, cur
                 "parent_selected_mux_filter": current_selected_mux_filter
             }
             switch_page("edit_data") # PINDAH KE HALAMAN BARU UNTUK EDIT
+            st.rerun()
     with col_edit_del_2:
         if st.button(f"🗑️ Hapus {mux_key}", key=f"delete_{provinsi}_{wilayah}_{mux_key}"):
             if st.warning(f"Anda yakin ingin menghapus data {mux_key} di {wilayah}, {provinsi}? Klik 'Hapus' lagi untuk konfirmasi.", icon="⚠️"):
@@ -447,6 +448,7 @@ def display_edit_data_page():
                 st.session_state.edit_mode = False
                 st.session_state.edit_data = None
                 switch_page("beranda") # Kembali ke halaman beranda
+                st.rerun()
 
 # --- HALAMAN UTAMA APLIKASI ---
 

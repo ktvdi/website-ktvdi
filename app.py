@@ -316,13 +316,12 @@ def display_add_data_form():
                     st.error(f"Gagal menyimpan data: {e}")
 
 # Fungsi untuk menangani tindakan edit dan hapus
-def handle_edit_delete_actions(provinsi, wilayah, mux_key, mux_details_full):
+def handle_edit_delete_actions(provinsi, wilayah, mux_key, mux_details_full, current_selected_mux_filter=None):
     """
     Menampilkan tombol edit/delete dan memicu aksi terkait.
     Fungsi ini dipanggil di mana pun data siaran ditampilkan.
     """
     # Pastikan mux_details_full adalah dictionary untuk mendapatkan semua info
-    # Jika data lama (list), ubah ke format dictionary untuk konsistensi
     if isinstance(mux_details_full, list):
         current_siaran_list = mux_details_full
         current_updated_by_username = None
@@ -342,7 +341,7 @@ def handle_edit_delete_actions(provinsi, wilayah, mux_key, mux_details_full):
     col_edit_del_1, col_edit_del_2 = st.columns(2)
     with col_edit_del_1:
         if st.button(f"✏️ Edit {mux_key}", key=f"edit_{provinsi}_{wilayah}_{mux_key}"):
-            st.session_state.edit_mode = True
+            st.session_state.edit_mode = True # Set edit_mode
             st.session_state.edit_data = {
                 "provinsi": provinsi,
                 "wilayah": wilayah,
@@ -351,18 +350,13 @@ def handle_edit_delete_actions(provinsi, wilayah, mux_key, mux_details_full):
                 "last_updated_by_username": current_updated_by_username,
                 "last_updated_by_name": current_updated_by_name,
                 "last_updated_date": current_updated_date,
-                "last_updated_time": current_updated_time
+                "last_updated_time": current_updated_time,
+                "parent_selected_mux_filter": current_selected_mux_filter
             }
-            st.rerun()
+            switch_page("edit_data") # PINDAH KE HALAMAN BARU UNTUK EDIT
     with col_edit_del_2:
         if st.button(f"🗑️ Hapus {mux_key}", key=f"delete_{provinsi}_{wilayah}_{mux_key}"):
-            # Konfirmasi sebelum menghapus
-            confirm_delete = st.warning(f"Anda yakin ingin menghapus data {mux_key} di {wilayah}, {provinsi}?")
-            # Streamlit buttons immediately re-run, so we need a mechanism for confirmation.
-            # A common pattern is to use a separate state variable or a "confirm" button.
-            # For simplicity, if st.warning is triggered, it implies a soft confirmation.
-            # A more robust confirmation would involve a pop-up or a second button click.
-            if confirm_delete: # This will be True if the user clicked "OK" on the warning, if not, it's None.
+            if st.warning(f"Anda yakin ingin menghapus data {mux_key} di {wilayah}, {provinsi}? Klik 'Hapus' lagi untuk konfirmasi.", icon="⚠️"):
                 try:
                     db.reference(f"siaran/{provinsi}/{wilayah}/{mux_key}").delete()
                     st.success(f"Data {mux_key} berhasil dihapus!")
@@ -371,28 +365,36 @@ def handle_edit_delete_actions(provinsi, wilayah, mux_key, mux_details_full):
                     st.error(f"Gagal menghapus data: {e}")
     st.markdown("---")
 
+# --- FUNGSI BARU UNTUK HALAMAN EDIT ---
+def display_edit_data_page():
+    """Menampilkan halaman terpisah untuk mengedit data siaran."""
+    st.header("📝 Edit Data Siaran")
 
-def display_edit_form(selected_provinsi):
-    """Menampilkan form edit data siaran."""
-    st.markdown("---")
-    st.markdown("## ⚙️ Kelola Data Siaran")
-    st.subheader("📝 Edit Data Siaran")
+    # Pastikan ada data yang dipilih untuk diedit
+    if not st.session_state.edit_mode or st.session_state.edit_data is None:
+        st.warning("Tidak ada data siaran yang dipilih untuk diedit.")
+        if st.button("Kembali ke Beranda"):
+            switch_page("beranda")
+        return
+
     edit_data = st.session_state.edit_data
     
-    # Default values for the edit form
+    selected_provinsi = edit_data.get("provinsi", "N/A") # Ambil provinsi dari data edit
     default_wilayah = edit_data.get("wilayah", "")
     default_mux = edit_data.get("mux", "")
     default_siaran_list = edit_data.get("siaran", [])
     default_siaran = ", ".join(default_siaran_list)
 
-    with st.form("edit_form", clear_on_submit=False):
-        st.text_input("Provinsi", value=selected_provinsi, disabled=True)
-        new_wilayah = st.text_input("Wilayah Layanan", value=default_wilayah, key="edit_wilayah")
-        new_mux = st.text_input("Penyelenggara MUX", value=default_mux, key="edit_mux")
+    st.info(f"Anda sedang mengedit data untuk **{default_mux}** di **{default_wilayah}, {selected_provinsi}**.")
+
+    with st.form("edit_form_page", clear_on_submit=False):
+        st.text_input("Provinsi", value=selected_provinsi, disabled=True, key="edit_provinsi_page")
+        new_wilayah = st.text_input("Wilayah Layanan", value=default_wilayah, key="edit_wilayah_page")
+        new_mux = st.text_input("Penyelenggara MUX", value=default_mux, key="edit_mux_page")
         new_siaran_input = st.text_area(
             "Daftar Siaran (pisahkan dengan koma)",
             value=default_siaran,
-            key="edit_siaran"
+            key="edit_siaran_page"
         )
 
         col1, col2 = st.columns(2)
@@ -425,6 +427,7 @@ def display_edit_form(selected_provinsi):
                                 "last_updated_time": updated_time
                             }
 
+                            # Hapus data lama jika ada perubahan di wilayah atau mux (karena ini mengubah path)
                             if default_wilayah != new_wilayah_clean or default_mux != new_mux_clean:
                                 db.reference(f"siaran/{selected_provinsi}/{default_wilayah}/{default_mux}").delete()
                                 st.toast("Data lama dihapus.")
@@ -433,17 +436,17 @@ def display_edit_form(selected_provinsi):
                                 db.reference(f"siaran/{selected_provinsi}/{new_wilayah_clean}/{new_mux_clean}").update(data_to_update)
                                 
                             st.success("Data berhasil diperbarui!")
-                            st.session_state.edit_mode = False
-                            st.session_state.edit_data = None
                             st.balloons()
-                            st.rerun()
+                            st.session_state.edit_mode = False # Reset mode edit
+                            st.session_state.edit_data = None # Kosongkan data edit
+                            switch_page("beranda") # Kembali ke halaman beranda
                         except Exception as e:
                             st.error(f"Gagal memperbarui data: {e}")
         with col2:
-            if st.form_submit_button("Batal Edit"):
+            if st.form_submit_button("Batal"):
                 st.session_state.edit_mode = False
                 st.session_state.edit_data = None
-                st.rerun()
+                switch_page("beranda") # Kembali ke halaman beranda
 
 # --- HALAMAN UTAMA APLIKASI ---
 
@@ -468,14 +471,11 @@ if st.session_state.halaman == "beranda":
             mux_data = siaran_data_prov[selected_wilayah]
             mux_list = sorted(mux_data.keys())
             
-            # Add MUX operator filter
             selected_mux_filter = st.selectbox("Pilih Penyelenggara MUX", ["Semua MUX"] + mux_list, key="select_mux_filter")
 
-            # Tampilkan data sesuai filter
             if selected_mux_filter == "Semua MUX":
                 for mux_key, mux_details in mux_data.items():
                     st.subheader(f"📡 {mux_key}")
-                    # Handle old format (list of channels) vs new (dictionary with details)
                     if isinstance(mux_details, list):
                         siaran_list = mux_details
                     else:
@@ -485,9 +485,8 @@ if st.session_state.halaman == "beranda":
                         st.write(f"- {tv}")
                     
                     if st.session_state.login:
-                        handle_edit_delete_actions(selected_provinsi, selected_wilayah, mux_key, mux_details)
+                        handle_edit_delete_actions(selected_provinsi, selected_wilayah, mux_key, mux_details, selected_mux_filter)
                     else:
-                        # Display update info even if not logged in
                         if isinstance(mux_details, dict):
                             last_updated_by_name = mux_details.get("last_updated_by_name", "N/A")
                             last_updated_date = mux_details.get("last_updated_date", "N/A")
@@ -510,7 +509,7 @@ if st.session_state.halaman == "beranda":
                         st.write(f"- {tv}")
                     
                     if st.session_state.login:
-                        handle_edit_delete_actions(selected_provinsi, selected_wilayah, selected_mux_filter, mux_details)
+                        handle_edit_delete_actions(selected_provinsi, selected_wilayah, selected_mux_filter, mux_details, selected_mux_filter)
                     else:
                         if isinstance(mux_details, dict):
                             last_updated_by_name = mux_details.get("last_updated_by_name", "N/A")
@@ -531,9 +530,6 @@ if st.session_state.halaman == "beranda":
     # Tampilkan form tambah data jika sudah login
     if st.session_state.login:
         display_add_data_form()
-        # Jika dalam mode edit, tampilkan form edit
-        if st.session_state.edit_mode:
-            display_edit_form(selected_provinsi)
     else:
         st.info("Untuk menambahkan, memperbarui, atau menghapus data, silakan login terlebih dahulu.")
         if st.button("🔐 Login / Daftar Akun"):
@@ -565,3 +561,11 @@ elif st.session_state.halaman == "login":
     if st.button("⬅️ Kembali ke Beranda"):
         switch_page("beranda")
         st.rerun()
+
+# --- Routing untuk halaman edit_data ---
+elif st.session_state.halaman == "edit_data":
+    if not st.session_state.login: # Pastikan user login untuk mengakses halaman edit
+        st.warning("Anda harus login untuk mengakses halaman ini.")
+        switch_page("login")
+    else:
+        display_edit_data_page() # Panggil fungsi untuk merender halaman edit

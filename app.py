@@ -407,16 +407,21 @@ def display_edit_data_page():
     """Menampilkan halaman terpisah untuk mengedit data siaran."""
     st.header("📝 Edit Data Siaran")
 
-    # Pastikan ada data yang dipilih untuk diedit
+    # Pastikan ada data yang dipilih untuk diedit dan pengguna sudah login
+    if not st.session_state.login:
+        st.warning("Anda harus login untuk mengakses halaman ini.")
+        switch_page("login")
+        return
+    
     if not st.session_state.edit_mode or st.session_state.edit_data is None:
-        st.warning("Tidak ada data siaran yang dipilih untuk diedit.")
+        st.warning("Tidak ada data siaran yang dipilih untuk diedit. Silakan pilih data dari halaman utama.")
         if st.button("Kembali ke Beranda"):
             switch_page("beranda")
         return
 
     edit_data = st.session_state.edit_data
     
-    selected_provinsi = edit_data.get("provinsi", "N/A") # Ambil provinsi dari data edit
+    selected_provinsi = edit_data.get("provinsi", "N/A")
     default_wilayah = edit_data.get("wilayah", "")
     default_mux = edit_data.get("mux", "")
     default_siaran_list = edit_data.get("siaran", [])
@@ -426,27 +431,58 @@ def display_edit_data_page():
 
     with st.form("edit_form_page", clear_on_submit=False):
         st.text_input("Provinsi", value=selected_provinsi, disabled=True, key="edit_provinsi_page")
-        new_wilayah = st.text_input("Wilayah Layanan", value=default_wilayah, key="edit_wilayah_page")
-        new_mux = st.text_input("Penyelenggara MUX", value=default_mux, key="edit_mux_page")
+        new_wilayah = st.text_input("Wilayah Layanan", value=default_wilayah, placeholder="Contoh: Jawa Timur-1", key="edit_wilayah_page")
+        new_mux = st.text_input("Penyelenggara MUX", value=default_mux, placeholder="Contoh: UHF 27 - Metro TV", key="edit_mux_page")
         new_siaran_input = st.text_area(
             "Daftar Siaran (pisahkan dengan koma)",
             value=default_siaran,
+            placeholder="Contoh: Metro TV, Magna Channel, BN Channel",
             key="edit_siaran_page"
         )
 
         col1, col2 = st.columns(2)
         with col1:
             if st.form_submit_button("Simpan Perubahan"):
+                # --- VALIDASI PADA FORM EDIT ---
                 if not all([new_wilayah, new_mux, new_siaran_input]):
                     st.warning("Harap isi semua kolom.")
+                    is_valid = False
                 else:
                     new_wilayah_clean = new_wilayah.strip()
                     new_mux_clean = new_mux.strip()
-                    new_siaran_list = sorted([s.strip() for s in new_siaran_input.split(",") if s.strip()])
+                    # Filter string kosong dari daftar siaran
+                    new_siaran_list = [s.strip() for s in new_siaran_input.split(",") if s.strip()]
+                    
+                    is_valid = True 
+                    
+                    # Validasi Format Wilayah Layanan: "Nama Provinsi-Angka"
+                    # Contoh: "Jawa Timur-1", "DKI Jakarta-2"
+                    wilayah_pattern = r"^[a-zA-Z\s]+-\d+$" 
+                    if not re.fullmatch(wilayah_pattern, new_wilayah_clean):
+                        st.error("Format **Wilayah Layanan** tidak valid. Harap gunakan format 'Nama Provinsi-Angka'. Contoh: 'Jawa Timur-1', 'DKI Jakarta-2'.")
+                        is_valid = False
+                    
+                    # Validasi Format Penyelenggara MUX: "UHF XX - Nama MUX"
+                    # Contoh: "UHF 27 - Metro TV"
+                    mux_pattern = r"^UHF\s+\d{1,3}\s*-\s*.+$"
+                    if not re.fullmatch(mux_pattern, new_mux_clean, re.IGNORECASE):
+                        st.error("Format **Penyelenggara MUX** tidak valid. Harap gunakan format 'UHF XX - Nama MUX'. Contoh: 'UHF 27 - Metro TV'.")
+                        is_valid = False
 
+                    # Validasi Daftar Siaran
                     if not new_siaran_list:
-                        st.warning("Daftar siaran tidak boleh kosong.")
+                        st.warning("Daftar **Siaran** tidak boleh kosong.")
+                        is_valid = False
                     else:
+                        # Opsional: Validasi setiap nama siaran tidak mengandung karakter aneh
+                        for s in new_siaran_list:
+                            # Regex ini memungkinkan huruf, angka, spasi, dan karakter &()_.,'-
+                            if not re.fullmatch(r"^[a-zA-Z0-9\s&()_.,'-]+$", s): 
+                                st.error(f"Nama siaran '{s}' tidak valid. Hanya boleh huruf, angka, spasi, dan karakter '&()_.,'-'.")
+                                is_valid = False
+                                break # Hentikan loop jika ada yang tidak valid
+                                
+                    if is_valid:
                         try:
                             updater_username = st.session_state.username
                             users_ref = db.reference("users").child(updater_username).get()
@@ -457,35 +493,38 @@ def display_edit_data_page():
                             updated_time = now_wib.strftime("%H:%M:%S WIB")
 
                             data_to_update = {
-                                "siaran": new_siaran_list,
+                                "siaran": sorted(new_siaran_list), # Urutkan daftar siaran sebelum disimpan
                                 "last_updated_by_username": updater_username,
                                 "last_updated_by_name": updater_name,
                                 "last_updated_date": updated_date,
                                 "last_updated_time": updated_time
                             }
 
-                            # Hapus data lama jika ada perubahan di wilayah atau mux (karena ini mengubah path)
+                            # Jika wilayah atau MUX berubah, itu berarti path di database berubah,
+                            # jadi perlu dihapus data lama dan dibuat yang baru.
                             if default_wilayah != new_wilayah_clean or default_mux != new_mux_clean:
                                 db.reference(f"siaran/{selected_provinsi}/{default_wilayah}/{default_mux}").delete()
                                 st.toast("Data lama dihapus.")
                                 db.reference(f"siaran/{selected_provinsi}/{new_wilayah_clean}/{new_mux_clean}").set(data_to_update)
                             else:
+                                # Jika tidak ada perubahan di wilayah/MUX, cukup update data yang ada
                                 db.reference(f"siaran/{selected_provinsi}/{new_wilayah_clean}/{new_mux_clean}").update(data_to_update)
                                 
                             st.success("Data berhasil diperbarui!")
                             st.balloons()
                             st.session_state.edit_mode = False # Reset mode edit
                             st.session_state.edit_data = None # Kosongkan data edit
-                            switch_page("beranda") # Kembali ke halaman beranda
-                            st.rerun()
+                            time.sleep(1) # Beri jeda agar pesan success terlihat
+                            switch_page("beranda")
+                            st.rerun()# Kembali ke halaman beranda
                         except Exception as e:
                             st.error(f"Gagal memperbarui data: {e}")
         with col2:
             if st.form_submit_button("Batal"):
                 st.session_state.edit_mode = False
                 st.session_state.edit_data = None
-                switch_page("beranda") # Kembali ke halaman beranda
-                st.rerun()
+                switch_page("beranda")
+                st.rerun()# Kembali ke halaman beranda
 
 # --- HALAMAN UTAMA APLIKASI ---
 

@@ -4,6 +4,7 @@ import hashlib
 import smtplib
 import random
 import time
+import re
 from email.mime.text import MIMEText
 from firebase_admin import credentials, db
 from pytz import timezone
@@ -270,8 +271,7 @@ def display_add_data_form():
 
     provinsi_list = sorted(provinsi_data.values())
     
-    # Gunakan st.form dengan clear_on_submit=True
-    with st.form("add_data_form", clear_on_submit=True): # <--- Perubahan Kunci di sini
+    with st.form("add_data_form", clear_on_submit=True):
         provinsi = st.selectbox("Pilih Provinsi", provinsi_list, key="provinsi_input_add")
         wilayah = st.text_input("Masukkan Wilayah Layanan", placeholder="Contoh: Jawa Timur-1", key="wilayah_input_add")
         mux = st.text_input("Masukkan Penyelenggara MUX", placeholder="Contoh: UHF 27 - Metro TV", key="mux_input_add")
@@ -281,19 +281,49 @@ def display_add_data_form():
             key="siaran_input_add"
         )
 
-        submitted = st.form_submit_button("Simpan Data Baru") # <--- Tombol harus ada di dalam st.form
+        submitted = st.form_submit_button("Simpan Data Baru")
         
-        if submitted: # <--- Cek apakah form disubmit
+        if submitted:
+            # 1. Validasi Kolom Kosong
             if not all([provinsi, wilayah, mux, siaran_input]):
                 st.warning("Harap isi semua kolom.")
+                is_valid = False # Atur is_valid ke False jika ada kolom kosong
             else:
                 wilayah_clean = wilayah.strip()
                 mux_clean = mux.strip()
-                siaran_list = sorted([s.strip() for s in siaran_input.split(",") if s.strip()])
+                siaran_list = [s.strip() for s in siaran_input.split(",") if s.strip()]
                 
+                is_valid = True 
+                
+                # 2. Validasi Format Wilayah Layanan (Diperbarui)
+                # Pola: Dimulai dengan huruf (Nama Provinsi), diikuti spasi (opsional),
+                # kemudian tanda hubung '-', dan diakhiri dengan angka (1 atau lebih digit).
+                # Contoh: "Jawa Timur-1", "DKI Jakarta-2", "Banten-3"
+                wilayah_pattern = r"^[a-zA-Z\s]+-\d+$" 
+                if not re.fullmatch(wilayah_pattern, wilayah_clean):
+                    st.error("Format Wilayah Layanan tidak valid. Harap gunakan format 'Nama Provinsi-Angka'. Contoh: 'Jawa Timur-1', 'DKI Jakarta-2'.")
+                    is_valid = False
+                
+                # 3. Validasi Format Penyelenggara MUX
+                mux_pattern = r"^UHF\s+\d{1,3}\s*-\s*.+$" # Contoh: "UHF 27 - Metro TV"
+                if not re.fullmatch(mux_pattern, mux_clean, re.IGNORECASE):
+                    st.error("Format Penyelenggara MUX tidak valid. Harap gunakan format 'UHF XX - Nama MUX'. Contoh: 'UHF 27 - Metro TV'.")
+                    is_valid = False
+
+                # 4. Validasi Daftar Siaran
                 if not siaran_list:
                     st.warning("Daftar siaran tidak boleh kosong.")
+                    is_valid = False
                 else:
+                    for s in siaran_list:
+                        # Ini regex yang cukup permisif, bisa disesuaikan jika perlu karakter lain
+                        if not re.fullmatch(r"^[a-zA-Z0-9\s&()_.,'-]+$", s): 
+                            st.error(f"Nama siaran '{s}' tidak valid. Hanya boleh huruf, angka, spasi, dan karakter '&()_.,'-'.")
+                            is_valid = False
+                            break # Hentikan loop jika ada yang tidak valid
+                            
+                # Hanya simpan data jika semua validasi berhasil
+                if is_valid:
                     try:
                         updater_username = st.session_state.username
                         users_ref = db.reference("users").child(updater_username).get()
@@ -304,7 +334,7 @@ def display_add_data_form():
                         updated_time = now_wib.strftime("%H:%M:%S WIB")
 
                         data_to_save = {
-                            "siaran": siaran_list,
+                            "siaran": sorted(siaran_list),
                             "last_updated_by_username": updater_username,
                             "last_updated_by_name": updater_name,
                             "last_updated_date": updated_date,
@@ -314,14 +344,12 @@ def display_add_data_form():
                         db.reference(f"siaran/{provinsi}/{wilayah_clean}/{mux_clean}").set(data_to_save)
                         st.success("Data berhasil disimpan!")
                         st.balloons()
-                        time.sleep(1)
-                        st.rerun()
-                        # Karena clear_on_submit=True, input akan otomatis dikosongkan setelah ini.
-                        # Tidak perlu st.rerun() di sini, karena form akan otomatis di-reset.
-                        # st.rerun() jika Anda ingin seluruh halaman di-refresh untuk melihat data baru di daftar utama.
-                        # Jika hanya untuk mengosongkan form, tidak perlu rerun lagi.
+                        time.sleep(1) # Beri jeda agar pesan success terlihat
+                        st.rerun() # Refresh halaman untuk melihat data baru atau mengosongkan form
                     except Exception as e:
                         st.error(f"Gagal menyimpan data: {e}")
+
+# ... (sisa kode Anda) ...
 
 # Fungsi untuk menangani tindakan edit dan hapus
 def handle_edit_delete_actions(provinsi, wilayah, mux_key, mux_details_full, current_selected_mux_filter=None):

@@ -306,19 +306,28 @@ if st.session_state.halaman == "beranda":
     
     if provinsi_data:
         provinsi_list = sorted(provinsi_data.values())
-        selected_provinsi = st.selectbox("Pilih Provinsi", provinsi_list)
+        selected_provinsi = st.selectbox("Pilih Provinsi", provinsi_list, key="select_provinsi")
         
         siaran_data_prov = db.reference(f"siaran/{selected_provinsi}").get()
         if siaran_data_prov:
             wilayah_list = sorted(siaran_data_prov.keys())
-            selected_wilayah = st.selectbox("Pilih Wilayah Layanan", wilayah_list)
+            selected_wilayah = st.selectbox("Pilih Wilayah Layanan", wilayah_list, key="select_wilayah")
             
             mux_data = siaran_data_prov[selected_wilayah]
             mux_list = sorted(mux_data.keys())
             
-            for mux in mux_list:
-                st.subheader(f"📡 {mux}")
-                for tv in mux_data[mux]:
+            # Add MUX operator filter
+            selected_mux = st.selectbox("Pilih Penyelenggara MUX", ["Semua MUX"] + mux_list, key="select_mux")
+
+            if selected_mux == "Semua MUX":
+                for mux in mux_list:
+                    st.subheader(f"📡 {mux}")
+                    for tv in mux_data[mux]:
+                        st.write(f"- {tv}")
+                    st.markdown("---")
+            else:
+                st.subheader(f"📡 {selected_mux}")
+                for tv in mux_data[selected_mux]:
                     st.write(f"- {tv}")
                 st.markdown("---")
         else:

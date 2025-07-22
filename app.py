@@ -361,7 +361,7 @@ def handle_edit_delete_actions(provinsi, wilayah, mux_key, mux_details_full, cur
                 db.reference(f"siaran/{provinsi}/{wilayah}/{mux_key}").delete()
                 st.success(f"Data {mux_key} berhasil dihapus!")
                 time.sleep(2)
-                st.rerun
+                st.rerun()
             except Exception as e:
                 st.error(f"Gagal menghapus data: {e}")
     st.markdown("---")

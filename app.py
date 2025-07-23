@@ -570,7 +570,7 @@ def generate_siaran_image(provinsi, wilayah, mux_data_for_image, selected_mux_fi
     # Anda perlu menyesuaikan nilai-nilai ini agar sesuai dengan desain Anda
     # GUNAKAN SOFTWARE PENGOLAH GAMBAR (seperti Paint, GIMP, Photoshop) untuk menentukan koordinat ini.
     # Arahkan kursor ke pojok kiri atas area tempat teks akan dimulai.
-    pos_provinsi_wilayah = (50, 100) # Contoh: (X, Y) untuk teks Provinsi dan Wilayah
+    pos_provinsi_wilayah = (50, 130) # Contoh: (X, Y) untuk teks Provinsi dan Wilayah
     pos_mux_start_y = 150 # Y awal untuk MUX pertama. X akan sama dengan pos_general_mux_title[0]
     pos_general_mux_title_x = 50# X yang sama untuk semua judul MUX
     pos_general_siaran_list_x = 65 # X yang sama untuk semua daftar siaran
@@ -589,9 +589,9 @@ def generate_siaran_image(provinsi, wilayah, mux_data_for_image, selected_mux_fi
     try:
         # Coba muat font dari path yang ditentukan di repositori
         # Jika font ini tidak ditemukan, itu akan memicu IOError
-        header_font = ImageFont.truetype(font_path_in_repo, 20)
-        content_font = ImageFont.truetype(font_path_in_repo, 16)
-        small_font = ImageFont.truetype(font_path_in_repo, 12)
+        header_font = ImageFont.truetype(font_path_in_repo, 40)
+        content_font = ImageFont.truetype(font_path_in_repo, 30)
+        small_font = ImageFont.truetype(font_path_in_repo, 20)
         
     except IOError:
         st.error(f"Gagal memuat font kustom dari '{font_path_in_repo}'. Pastikan file font ada di lokasi tersebut.")

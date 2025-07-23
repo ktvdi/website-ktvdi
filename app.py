@@ -10,6 +10,11 @@ from firebase_admin import credentials, db
 from pytz import timezone
 from datetime import datetime
 
+# Import tambahan untuk membuat gambar
+from PIL import Image, ImageDraw, ImageFont
+from io import BytesIO
+import textwrap
+
 # --- KONFIGURASI DAN INISIALISASI ---
 
 st.set_page_config(page_title="KTVDI", page_icon="🇮🇩")
@@ -484,7 +489,7 @@ def display_edit_data_page():
                             st.error("Format Wilayah Layanan tidak lengkap (tidak ada tanda hubung dan angka).")
                             is_valid = False
                         # --- End Validasi Baru ---
-                
+                    
                     # Validasi Format Penyelenggara MUX
                     mux_pattern = r"^UHF\s+\d{1,3}\s*-\s*.+$"
                     if not re.fullmatch(mux_pattern, new_mux_clean, re.IGNORECASE):
@@ -544,6 +549,132 @@ def display_edit_data_page():
                 st.session_state.edit_data = None
                 switch_page("beranda")
                 st.rerun()
+
+# --- FUNGSI UNTUK GENERATE GAMBAR DARI TEMPLATE ---
+def generate_siaran_image(provinsi, wilayah, mux_data_for_image, selected_mux_filter):
+    """
+    Menghasilkan gambar JPG dari data siaran menggunakan template desain yang sudah ada
+    dan font dari repositori GitHub.
+    """
+    # --- KONFIGURASI TEMPLATE DAN POSISI TEKS ---
+    # Ganti 'assets/template_siaran.png' dengan path ke file desain Anda di repositori GitHub
+    # Contoh: jika Anda menaruhnya di folder 'images', maka jadi 'images/template_siaran.png'
+    template_path = "assets/template.jng" # <--- SESUAIKAN PATH INI
+
+    # --- KONFIGURASI FONT ---
+    # PASTI DULU: BUAT FOLDER 'fonts' DI ROOT REPOSITORI ANDA
+    # DAN LETAKKAN FILE .ttf DI DALAMNYA, CONTOH: 'fonts/Montserrat-Regular.ttf'
+    font_path_in_repo = "font/PoetsenOne-Regular.ttf" # <--- SESUAIKAN PATH DAN NAMA FILE FONT ANDA
+
+    # Koordinat awal (X, Y) untuk setiap bagian teks pada template Anda
+    # Anda perlu menyesuaikan nilai-nilai ini agar sesuai dengan desain Anda
+    # GUNAKAN SOFTWARE PENGOLAH GAMBAR (seperti Paint, GIMP, Photoshop) untuk menentukan koordinat ini.
+    # Arahkan kursor ke pojok kiri atas area tempat teks akan dimulai.
+    pos_provinsi_wilayah = (48, 57) # Contoh: (X, Y) untuk teks Provinsi dan Wilayah
+    pos_mux_start_y = 150 # Y awal untuk MUX pertama. X akan sama dengan pos_general_mux_title[0]
+    pos_general_mux_title_x = 50 # X yang sama untuk semua judul MUX
+    pos_general_siaran_list_x = 65 # X yang sama untuk semua daftar siaran
+    pos_general_updated_info_x = 50 # X yang sama untuk semua info "Diperbarui oleh"
+
+    # Lebar maksimum baris teks untuk siaran, jika perlu dibungkus
+    # Sesuaikan lebar ini agar teks tidak keluar dari batas desain Anda
+    max_siaran_text_width = 700
+
+    # Jarak antar baris (line height)
+    line_height_siaran = 20
+    line_height_info = 15
+    spacing_between_mux = 25 # Jarak tambahan setelah setiap blok MUX
+
+    # --- Pemuatan Font (Diperbarui untuk menggunakan font dari repo) ---
+    try:
+        # Coba muat font dari path yang ditentukan di repositori
+        # Jika font ini tidak ditemukan, itu akan memicu IOError
+        header_font = ImageFont.truetype(font_path_in_repo, 20)
+        content_font = ImageFont.truetype(font_path_in_repo, 16)
+        small_font = ImageFont.truetype(font_path_in_repo, 12)
+        
+    except IOError:
+        st.error(f"Gagal memuat font kustom dari '{font_path_in_repo}'. Pastikan file font ada di lokasi tersebut.")
+        st.warning("Menggunakan font PIL default. Kualitas gambar mungkin bervariasi.")
+        # Fallback ke font default jika font kustom tidak ditemukan
+        header_font = ImageFont.load_default()
+        content_font = ImageFont.load_default()
+        small_font = ImageFont.load_default()
+        
+
+    # --- Membuka Template Gambar ---
+    try:
+        img = Image.open(template_path).convert("RGB") # Pastikan dikonversi ke RGB
+        d = ImageDraw.Draw(img)
+    except FileNotFoundError:
+        st.error(f"File template gambar tidak ditemukan di: '{template_path}'. Pastikan path benar dan file ada di repositori GitHub Anda.")
+        # Fallback ke gambar kosong jika template tidak ditemukan (untuk debug)
+        img = Image.new('RGB', (800, 600), color = (255, 255, 255))
+        d = ImageDraw.Draw(img)
+        d.text((50, 50), "Error: Template not found!", fill=(255, 0, 0), font=header_font)
+        # Hentikan eksekusi lebih lanjut jika ada error fatal agar tidak crash
+        return BytesIO().getvalue() # Kembalikan byte kosong atau tangani sesuai kebutuhan
+
+    # --- Menulis Data ke Gambar ---
+    
+    # Data Provinsi dan Wilayah
+    d.text(pos_provinsi_wilayah, f"Provinsi: {provinsi} | Wilayah: {wilayah}", fill=(0, 0, 0), font=header_font)
+
+    # Inisialisasi offset Y untuk konten MUX
+    current_y_offset = pos_mux_start_y
+    
+    # Fungsi pembantu untuk menggambar konten MUX
+    def draw_mux_content_on_image(mux_key, mux_details, y_offset_ref):
+        nonlocal current_y_offset # Mengakses dan memodifikasi variabel dari scope luar
+        
+        # Gambar judul MUX
+        d.text((pos_general_mux_title_x, y_offset_ref), f"📡 {mux_key}", fill=(0, 0, 128), font=header_font)
+        y_offset_ref += header_font.getbbox(f"📡 {mux_key}")[3] + 5
+
+        siaran_list = mux_details.get("siaran", []) if isinstance(mux_details, dict) else mux_details
+        
+        # Gambar daftar siaran, bungkus jika terlalu panjang
+        for tv in siaran_list:
+            # Estimasi karakter per baris berdasarkan lebar piksel dan ukuran font
+            chars_per_line = int(max_siaran_text_width / (content_font.getbbox('A')[2])) # bbox[2] adalah lebar karakter
+            wrapped_text = textwrap.wrap(f"- {tv}", width=chars_per_line)
+            for line in wrapped_text:
+                d.text((pos_general_siaran_list_x, y_offset_ref), line, fill=(0, 0, 0), font=content_font)
+                y_offset_ref += line_height_siaran
+            
+        # Gambar info pembaruan
+        if isinstance(mux_details, dict):
+            last_updated_by_name = mux_details.get("last_updated_by_name", "N/A")
+            last_updated_date = mux_details.get("last_updated_date", "N/A")
+            last_updated_time = mux_details.get("last_updated_time", "N/A")
+            updated_info = f"Diperbarui oleh: {last_updated_by_name} pada {last_updated_date} pukul {last_updated_time}"
+        else:
+            updated_info = "Diperbarui oleh: Belum Diperbarui pada N/A pukul N/A"
+            
+        d.text((pos_general_updated_info_x, y_offset_ref), updated_info, fill=(100, 100, 100), font=small_font)
+        y_offset_ref += small_font.getbbox(updated_info)[3] + spacing_between_mux # Tambah ruang antar MUX
+
+        return y_offset_ref # Kembalikan y_offset yang diperbarui
+
+    # Loop untuk menggambar semua MUX atau MUX tertentu
+    if selected_mux_filter == "Semua MUX":
+        sorted_mux_keys = sorted(mux_data_for_image.keys()) # Pastikan MUX diurutkan
+        for mux_key in sorted_mux_keys:
+            mux_details = mux_data_for_image[mux_key]
+            current_y_offset = draw_mux_content_on_image(mux_key, mux_details, current_y_offset)
+    else:
+        mux_details = mux_data_for_image.get(selected_mux_filter, {})
+        if mux_details:
+            current_y_offset = draw_mux_content_on_image(selected_mux_filter, mux_details, current_y_offset)
+        else:
+            d.text((pos_general_mux_title_x, current_y_offset), "Tidak ada data siaran untuk MUX ini.", fill=(150, 0, 0), font=content_font)
+
+    # Simpan gambar ke stream byte
+    buf = BytesIO()
+    # Anda bisa pilih format "PNG" jika template Anda PNG dan Anda ingin menjaga kualitas lossless
+    img.save(buf, format="JPEG", quality=90) 
+    byte_im = buf.getvalue()
+    return byte_im
 
 # --- HALAMAN UTAMA APLIKASI ---
 
@@ -618,6 +749,37 @@ if st.session_state.halaman == "beranda":
                         st.markdown("---")
                 else:
                     st.info("Tidak ada data siaran untuk MUX ini.")
+
+            # --- Tombol Unduh sebagai JPG ---
+            if st.session_state.login:
+                st.markdown("---")
+                st.subheader("⬇️ Unduh Data Siaran sebagai JPG")
+                
+                # Mendapatkan data yang akan dirender dalam gambar
+                data_to_render_for_image = {}
+                if selected_mux_filter == "Semua MUX":
+                    # Jika "Semua MUX", kirim semua data MUX dari wilayah yang dipilih
+                    data_to_render_for_image = mux_data
+                else:
+                    # Jika MUX spesifik, kirim hanya data MUX yang dipilih
+                    data_to_render_for_image = {selected_mux_filter: mux_data.get(selected_mux_filter, {})}
+
+                if st.button("Unduh Gambar Data Siaran"):
+                    with st.spinner("Mempersiapkan gambar..."):
+                        image_bytes = generate_siaran_image(selected_provinsi, selected_wilayah, data_to_render_for_image, selected_mux_filter)
+                        
+                        # Hanya sediakan tombol download jika image_bytes valid (tidak kosong)
+                        if image_bytes:
+                            st.download_button(
+                                label="Klik untuk Unduh File JPG",
+                                data=image_bytes,
+                                file_name=f"Data_Siaran_{selected_provinsi}_{selected_wilayah}_{selected_mux_filter.replace(' ', '_').replace('/', '-')}.jpg",
+                                mime="image/jpeg"
+                            )
+                            st.success("Gambar siap diunduh!")
+                        else:
+                            st.error("Gagal membuat gambar. Periksa log konsol untuk detail.")
+            # --- Akhir Tombol Unduh ---
 
         else:
             st.info("Belum ada data siaran untuk provinsi ini.")

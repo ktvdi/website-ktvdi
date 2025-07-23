@@ -559,7 +559,7 @@ def generate_siaran_image(provinsi, wilayah, mux_data_for_image, selected_mux_fi
     # --- KONFIGURASI TEMPLATE DAN POSISI TEKS ---
     # Ganti 'assets/template_siaran.png' dengan path ke file desain Anda di repositori GitHub
     # Contoh: jika Anda menaruhnya di folder 'images', maka jadi 'images/template_siaran.png'
-    template_path = "assets/template.jng" # <--- SESUAIKAN PATH INI
+    template_path = "assets/template.jpg" # <--- SESUAIKAN PATH INI
 
     # --- KONFIGURASI FONT ---
     # PASTI DULU: BUAT FOLDER 'fonts' DI ROOT REPOSITORI ANDA

@@ -1,3 +1,4 @@
 streamlit
 fpdf
 firebase-admin
+Pillow

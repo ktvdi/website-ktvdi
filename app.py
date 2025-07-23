@@ -570,9 +570,9 @@ def generate_siaran_image(provinsi, wilayah, mux_data_for_image, selected_mux_fi
     # Anda perlu menyesuaikan nilai-nilai ini agar sesuai dengan desain Anda
     # GUNAKAN SOFTWARE PENGOLAH GAMBAR (seperti Paint, GIMP, Photoshop) untuk menentukan koordinat ini.
     # Arahkan kursor ke pojok kiri atas area tempat teks akan dimulai.
-    pos_provinsi_wilayah = (48, 57) # Contoh: (X, Y) untuk teks Provinsi dan Wilayah
+    pos_provinsi_wilayah = (50, 100) # Contoh: (X, Y) untuk teks Provinsi dan Wilayah
     pos_mux_start_y = 150 # Y awal untuk MUX pertama. X akan sama dengan pos_general_mux_title[0]
-    pos_general_mux_title_x = 50 # X yang sama untuk semua judul MUX
+    pos_general_mux_title_x = 50# X yang sama untuk semua judul MUX
     pos_general_siaran_list_x = 65 # X yang sama untuk semua daftar siaran
     pos_general_updated_info_x = 50 # X yang sama untuk semua info "Diperbarui oleh"
 

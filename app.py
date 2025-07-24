@@ -582,7 +582,7 @@ def generate_siaran_image(provinsi, wilayah, mux_data_for_image, selected_mux_fi
 
     # Jarak antar baris (line height)
     line_height_siaran = 25
-    line_height_info = 20
+    line_height_info = 25
     spacing_between_mux = 25 # Jarak tambahan setelah setiap blok MUX
 
     # --- Pemuatan Font (Diperbarui untuk menggunakan font dari repo) ---

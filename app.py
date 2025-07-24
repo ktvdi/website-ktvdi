@@ -302,19 +302,17 @@ def display_add_data_form():
                     st.error("Format **Wilayah Layanan** tidak valid. Harap gunakan format 'Nama Provinsi-Angka'. Contoh: 'Jawa Timur-1', 'DKI Jakarta-2'.")
                     is_valid = False
                 else:
-                    # --- Validasi Baru: Nama Provinsi di Wilayah Layanan harus ada di daftar provinsi ---
                     # Ekstrak nama provinsi dari wilayah_clean (bagian sebelum tanda hubung)
                     wilayah_parts = wilayah_clean.split('-')
                     if len(wilayah_parts) > 1:
                         provinsi_from_wilayah = '-'.join(wilayah_parts[:-1]).strip() # Menggabungkan kembali jika ada '-' di nama provinsi
-                        if provinsi_from_wilayah not in provinsi_list:
-                            st.error(f"Nama provinsi '{provinsi_from_wilayah}' dalam Wilayah Layanan tidak ditemukan di daftar provinsi yang ada. Mohon periksa kembali.")
+                        if provinsi_from_wilayah.lower() != provinsi.lower(): # Perbandingan tidak sensitif huruf besar/kecil
+                            st.error(f"Nama provinsi '{provinsi_from_wilayah}' dalam **Wilayah Layanan** tidak cocok dengan **Provinsi** yang dipilih ('{provinsi}').")
                             is_valid = False
                     else:
                         # Ini seharusnya tidak terjadi jika regex wilayah_pattern sudah terpenuhi
-                        st.error("Format Wilayah Layanan tidak lengkap (tidak ada tanda hubung dan angka).")
+                        st.error("Format **Wilayah Layanan** tidak lengkap (tidak ada tanda hubung dan angka).")
                         is_valid = False
-                    # --- End Validasi Baru ---
                 
                 # Validasi Format Penyelenggara MUX
                 mux_pattern = r"^UHF\s+\d{1,3}\s*-\s*.+$"
@@ -473,18 +471,17 @@ def display_edit_data_page():
                         st.error("Format **Wilayah Layanan** tidak valid. Harap gunakan format 'Nama Provinsi-Angka'. Contoh: 'Jawa Timur-1', 'DKI Jakarta-2'.")
                         is_valid = False
                     else:
-                        # --- Validasi Baru: Nama Provinsi di Wilayah Layanan harus ada di daftar provinsi ---
+                        # Ekstrak nama provinsi dari new_wilayah_clean (bagian sebelum tanda hubung)
                         wilayah_parts = new_wilayah_clean.split('-')
                         if len(wilayah_parts) > 1:
                             provinsi_from_wilayah = '-'.join(wilayah_parts[:-1]).strip()
-                            if provinsi_from_wilayah not in provinsi_list:
-                                st.error(f"Nama provinsi '{provinsi_from_wilayah}' dalam Wilayah Layanan tidak ditemukan di daftar provinsi yang ada. Mohon periksa kembali.")
+                            if provinsi_from_wilayah.lower() != selected_provinsi.lower(): # Perbandingan tidak sensitif huruf besar/kecil
+                                st.error(f"Nama provinsi '{provinsi_from_wilayah}' dalam **Wilayah Layanan** tidak cocok dengan **Provinsi** yang dipilih ('{selected_provinsi}').")
                                 is_valid = False
                         else:
-                            st.error("Format Wilayah Layanan tidak lengkap (tidak ada tanda hubung dan angka).")
+                            st.error("Format **Wilayah Layanan** tidak lengkap (tidak ada tanda hubung dan angka).")
                             is_valid = False
-                        # --- End Validasi Baru ---
-                
+                            
                     # Validasi Format Penyelenggara MUX
                     mux_pattern = r"^UHF\s+\d{1,3}\s*-\s*.+$"
                     if not re.fullmatch(mux_pattern, new_mux_clean, re.IGNORECASE):

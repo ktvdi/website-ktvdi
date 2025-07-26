@@ -686,7 +686,6 @@ def display_comments_section(provinsi, wilayah, mux_key):
     """
     Menampilkan bagian komentar untuk MUX tertentu dan memungkinkan pengguna menambah komentar.
     """
-    st.markdown("---")
     st.subheader("💬 Komentar Pengguna")
 
     comments_ref = db.reference(f"siaran/{provinsi}/{wilayah}/{mux_key}/comments")

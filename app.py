@@ -621,10 +621,6 @@ def display_profile_page():
         switch_page("beranda")
         st.rerun()
 
----
-## 👥 Halaman Melihat Profil Pengguna Lain (Baru)
-
-```python
 def display_other_users_page():
     """Menampilkan daftar pengguna lain dan memungkinkan untuk melihat profil mereka."""
     st.header("👥 Profil Pengguna Lain")
@@ -691,12 +687,6 @@ def display_other_users_page():
         switch_page("beranda")
         st.rerun()
 
----
-## 🗺️ Routing Halaman Utama Aplikasi
-
-Bagian ini mengontrol halaman mana yang ditampilkan berdasarkan `st.session_state.halaman`.
-
-```python
 st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
 display_sidebar()
 

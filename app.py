@@ -5,7 +5,7 @@ import smtplib
 import random
 import time
 import re
-import pandas as pd # Import pandas untuk leaderboard
+import pandas as pd
 from email.mime.text import MIMEText
 from firebase_admin import credentials, db
 from pytz import timezone
@@ -104,7 +104,7 @@ def proses_logout():
     """Membersihkan session state saat logout."""
     st.session_state.login = False
     st.session_state.username = ""
-    st.session_state.selected_other_user = None # Tambahkan reset ini
+    st.session_state.selected_other_user = None
     switch_page("beranda")
 
 # --- FUNGSI UNTUK MERENDER KOMPONEN UI ---
@@ -115,20 +115,19 @@ def display_sidebar():
         users = db.reference("users").get() or {}
         user_data = users.get(st.session_state.username, {})
         nama_pengguna = user_data.get("nama", st.session_state.username)
-        user_points = user_data.get("points", 0) # Ambil poin pengguna
+        user_points = user_data.get("points", 0)
 
         st.sidebar.title(f"Hai, {nama_pengguna}!")
-        st.sidebar.markdown(f"**Poin Anda:** {user_points} ⭐") # Tampilkan poin
-        st.sidebar.markdown("---") # Garis pemisah
+        st.sidebar.markdown(f"**Poin Anda:** {user_points} ⭐")
+        st.sidebar.markdown("---")
 
         if st.sidebar.button("👤 Profil Saya"):
-            st.session_state.selected_other_user = None # Pastikan tidak melihat profil orang lain
+            st.session_state.selected_other_user = None
             switch_page("profile")
             st.rerun()
-        if st.sidebar.button("👥 Lihat Profil Pengguna Lain"): # Tombol baru
+        if st.sidebar.button("👥 Lihat Profil Pengguna Lain"):
             switch_page("other_users")
             st.rerun()
-        # Tambahkan tombol untuk Leaderboard
         if st.sidebar.button("🏆 Leaderboard"):
             switch_page("leaderboard")
             st.rerun()
@@ -167,7 +166,6 @@ def display_forgot_password_form(users):
     """Menampilkan form untuk proses lupa password."""
     st.header("🔑 Reset Password")
 
-    # Tahap 1: Kirim OTP
     if not st.session_state.otp_sent:
         lupa_nama = st.text_input("Nama Lengkap", key="reset_nama")
         username = st.text_input("Username", key="reset_user")
@@ -190,7 +188,6 @@ def display_forgot_password_form(users):
                     time.sleep(2)
                     st.rerun()
 
-    # Tahap 2: Verifikasi OTP dan Reset Password
     else:
         input_otp = st.text_input("Masukkan Kode OTP", key="reset_otp")
         new_pw = st.text_input("Password Baru", type="password", key="reset_new_pw")
@@ -206,7 +203,6 @@ def display_forgot_password_form(users):
                 db.reference("users").child(username).update({"password": hashed_new_pw})
                 st.success("Password berhasil direset. Silakan login kembali.")
                 
-                # Reset state dan kembali ke halaman login
                 st.session_state.lupa_password = False
                 st.session_state.otp_sent = False
                 time.sleep(2)
@@ -242,7 +238,6 @@ def display_registration_form(users):
             elif len(pw) < 6:
                 st.toast("❌ Password minimal 6 karakter.")
             else:
-                # Simpan data sementara di session state untuk verifikasi OTP
                 st.session_state.temp_reg_data = {
                     "nama": full_name, "email": new_email, "user": user, "pw": pw
                 }
@@ -268,11 +263,10 @@ def display_registration_form(users):
                     "nama": reg_data["nama"],
                     "password": hash_password(reg_data["pw"]),
                     "email": reg_data["email"],
-                    "points": 0 # Inisialisasi poin menjadi 0
+                    "points": 0
                 })
                 st.success("✅ Akun berhasil dibuat! Silakan login.")
                 
-                # Bersihkan state pendaftaran
                 st.session_state.otp_sent_daftar = False
                 st.session_state.temp_reg_data = {}
                 st.session_state.mode = "Login"
@@ -289,7 +283,7 @@ def display_add_data_form():
         st.warning("Data provinsi belum tersedia.")
         return
 
-    provinsi_list = sorted(provinsi_data.values()) # Daftar provinsi yang valid
+    provinsi_list = sorted(provinsi_data.values())
     
     with st.form("add_data_form", clear_on_submit=True):
         provinsi = st.selectbox("Pilih Provinsi", provinsi_list, key="provinsi_input_add")
@@ -309,38 +303,33 @@ def display_add_data_form():
                 is_valid = False
             else:
                 wilayah_clean = wilayah.strip()
-                wilayah_clean = re.sub(r'\s*-\s*', '-', wilayah_clean) # Normalisasi spasi di sekitar tanda hubung
+                wilayah_clean = re.sub(r'\s*-\s*', '-', wilayah_clean)
 
                 mux_clean = mux.strip()
                 siaran_list = [s.strip() for s in siaran_input.split(",") if s.strip()]
                 
                 is_valid = True 
                 
-                # Validasi Format Wilayah Layanan: "Nama Provinsi-Angka"
                 wilayah_pattern = r"^[a-zA-Z\s]+-\d+$" 
                 if not re.fullmatch(wilayah_pattern, wilayah_clean):
                     st.error("Format **Wilayah Layanan** tidak valid. Harap gunakan format 'Nama Provinsi-Angka'. Contoh: 'Jawa Timur-1', 'DKI Jakarta-2'.")
                     is_valid = False
                 else:
-                    # Ekstrak nama provinsi dari wilayah_clean (bagian sebelum tanda hubung)
                     wilayah_parts = wilayah_clean.split('-')
                     if len(wilayah_parts) > 1:
-                        provinsi_from_wilayah = '-'.join(wilayah_parts[:-1]).strip() # Menggabungkan kembali jika ada '-' di nama provinsi
-                        if provinsi_from_wilayah.lower() != provinsi.lower(): # Perbandingan tidak sensitif huruf besar/kecil
+                        provinsi_from_wilayah = '-'.join(wilayah_parts[:-1]).strip()
+                        if provinsi_from_wilayah.lower() != provinsi.lower():
                             st.error(f"Nama provinsi '{provinsi_from_wilayah}' dalam **Wilayah Layanan** tidak cocok dengan **Provinsi** yang dipilih ('{provinsi}').")
                             is_valid = False
                     else:
-                        # Ini seharusnya tidak terjadi jika regex wilayah_pattern sudah terpenuhi
                         st.error("Format **Wilayah Layanan** tidak lengkap (tidak ada tanda hubung dan angka).")
                         is_valid = False
                 
-                # Validasi Format Penyelenggara MUX
                 mux_pattern = r"^UHF\s+\d{1,3}\s*-\s*.+$"
                 if not re.fullmatch(mux_pattern, mux_clean, re.IGNORECASE):
                     st.error("Format **Penyelenggara MUX** tidak valid. Harap gunakan format 'UHF XX - Nama MUX'. Contoh: 'UHF 27 - Metro TV'.")
                     is_valid = False
 
-                # Validasi Daftar Siaran
                 if not siaran_list:
                     st.warning("Daftar **Siaran** tidak boleh kosong.")
                     is_valid = False
@@ -354,7 +343,7 @@ def display_add_data_form():
                 if is_valid:
                     try:
                         updater_username = st.session_state.username
-                        users_ref = db.reference(f"users/{updater_username}") # Ambil referensi user
+                        users_ref = db.reference(f"users/{updater_username}")
                         updater_data = users_ref.get()
                         updater_name = updater_data.get("nama", updater_username)
                         
@@ -374,9 +363,8 @@ def display_add_data_form():
                         st.success("Data berhasil disimpan!")
                         st.balloons()
                         
-                        # Tambahkan poin untuk kontributor
                         current_points = updater_data.get("points", 0)
-                        users_ref.update({"points": current_points + 10}) # Tambah 10 poin
+                        users_ref.update({"points": current_points + 10})
                         st.toast("Anda mendapatkan 10 poin untuk kontribusi ini!")
 
                         time.sleep(1)
@@ -384,33 +372,30 @@ def display_add_data_form():
                     except Exception as e:
                         st.error(f"Gagal menyimpan data: {e}")
 
-# Fungsi untuk menangani tindakan edit dan hapus
 def handle_edit_delete_actions(provinsi, wilayah, mux_key, mux_details_full, current_selected_mux_filter=None):
     """
     Menampilkan tombol edit/delete dan memicu aksi terkait.
     Fungsi ini dipanggil di mana pun data siaran ditampilkan.
     """
-    # Pastikan mux_details_full adalah dictionary untuk mendapatkan semua info
     if isinstance(mux_details_full, list):
         current_siaran_list = mux_details_full
         current_updated_by_username = None
         current_updated_by_name = "Belum Diperbarui"
         current_updated_date = "N/A"
         current_updated_time = "N/A"
-    else: # Sudah format dictionary
+    else:
         current_siaran_list = mux_details_full.get("siaran", [])
         current_updated_by_username = mux_details_full.get("last_updated_by_username")
         current_updated_by_name = mux_details_full.get("last_updated_by_name", "N/A")
         current_updated_date = mux_details_full.get("last_updated_date", "N/A")
         current_updated_time = mux_details_full.get("last_updated_time", "N/A")
 
-    # Menampilkan keterangan "Diperbarui oleh..."
     st.markdown(f"<p style='font-size: small; color: grey;'>Diperbarui oleh: <b>{current_updated_by_name}</b> pada {current_updated_date} pukul {current_updated_time}</p>", unsafe_allow_html=True)
 
     col_edit_del_1, col_edit_del_2 = st.columns(2)
     with col_edit_del_1:
         if st.button(f"✏️ Edit {mux_key}", key=f"edit_{provinsi}_{wilayah}_{mux_key}"):
-            st.session_state.edit_mode = True # Set edit_mode
+            st.session_state.edit_mode = True
             st.session_state.edit_data = {
                 "provinsi": provinsi,
                 "wilayah": wilayah,
@@ -422,7 +407,7 @@ def handle_edit_delete_actions(provinsi, wilayah, mux_key, mux_details_full, cur
                 "last_updated_time": current_updated_time,
                 "parent_selected_mux_filter": current_selected_mux_filter
             }
-            switch_page("edit_data") # PINDAH KE HALAMAN BARU UNTUK EDIT
+            switch_page("edit_data")
             st.rerun()
     with col_edit_del_2:
         if st.button(f"🗑️ Hapus {mux_key}", key=f"delete_{provinsi}_{wilayah}_{mux_key}"):
@@ -435,7 +420,6 @@ def handle_edit_delete_actions(provinsi, wilayah, mux_key, mux_details_full, cur
                 st.error(f"Gagal menghapus data: {e}")
     st.markdown("---")
 
-# --- FUNGSI BARU UNTUK HALAMAN EDIT ---
 def display_edit_data_page():
     """Menampilkan halaman terpisah untuk mengedit data siaran."""
     st.header("📝 Edit Data Siaran")
@@ -459,7 +443,6 @@ def display_edit_data_page():
     default_siaran_list = edit_data.get("siaran", [])
     default_siaran = ", ".join(default_siaran_list)
 
-    # Ambil daftar provinsi untuk validasi
     provinsi_data = db.reference("provinsi").get()
     provinsi_list = sorted(provinsi_data.values()) if provinsi_data else []
 
@@ -479,43 +462,38 @@ def display_edit_data_page():
         col1, col2 = st.columns(2)
         with col1:
             if st.form_submit_button("Simpan Perubahan"):
-                # --- VALIDASI PADA FORM EDIT ---
                 if not all([new_wilayah, new_mux, new_siaran_input]):
                     st.warning("Harap isi semua kolom.")
                     is_valid = False
                 else:
                     new_wilayah_clean = new_wilayah.strip()
-                    new_wilayah_clean = re.sub(r'\s*-\s*', '-', new_wilayah_clean) # Normalisasi spasi di sekitar tanda hubung
+                    new_wilayah_clean = re.sub(r'\s*-\s*', '-', new_wilayah_clean)
 
                     new_mux_clean = new_mux.strip()
                     new_siaran_list = [s.strip() for s in new_siaran_input.split(",") if s.strip()]
                     
                     is_valid = True 
                     
-                    # Validasi Format Wilayah Layanan: "Nama Provinsi-Angka"
                     wilayah_pattern = r"^[a-zA-Z\s]+-\d+$" 
                     if not re.fullmatch(wilayah_pattern, new_wilayah_clean):
                         st.error("Format **Wilayah Layanan** tidak valid. Harap gunakan format 'Nama Provinsi-Angka'. Contoh: 'Jawa Timur-1', 'DKI Jakarta-2'.")
                         is_valid = False
                     else:
-                        # Ekstrak nama provinsi dari new_wilayah_clean (bagian sebelum tanda hubung)
                         wilayah_parts = new_wilayah_clean.split('-')
                         if len(wilayah_parts) > 1:
                             provinsi_from_wilayah = '-'.join(wilayah_parts[:-1]).strip()
-                            if provinsi_from_wilayah.lower() != selected_provinsi.lower(): # Perbandingan tidak sensitif huruf besar/kecil
+                            if provinsi_from_wilayah.lower() != selected_provinsi.lower():
                                 st.error(f"Nama provinsi '{provinsi_from_wilayah}' dalam **Wilayah Layanan** tidak cocok dengan **Provinsi** yang dipilih ('{selected_provinsi}').")
                                 is_valid = False
                         else:
                             st.error("Format **Wilayah Layanan** tidak lengkap (tidak ada tanda hubung dan angka).")
                             is_valid = False
                             
-                    # Validasi Format Penyelenggara MUX
                     mux_pattern = r"^UHF\s+\d{1,3}\s*-\s*.+$"
                     if not re.fullmatch(mux_pattern, new_mux_clean, re.IGNORECASE):
                         st.error("Format **Penyelenggara MUX** tidak valid. Harap gunakan format 'UHF XX - Nama MUX'. Contoh: 'UHF 27 - Metro TV'.")
                         is_valid = False
 
-                    # Validasi Daftar Siaran
                     if not new_siaran_list:
                         st.warning("Daftar **Siaran** tidak boleh kosong.")
                         is_valid = False
@@ -529,7 +507,7 @@ def display_edit_data_page():
                     if is_valid:
                         try:
                             updater_username = st.session_state.username
-                            users_ref = db.reference(f"users/{updater_username}") # Ambil referensi user
+                            users_ref = db.reference(f"users/{updater_username}")
                             updater_data = users_ref.get()
                             updater_name = updater_data.get("nama", updater_username)
                             
@@ -557,9 +535,8 @@ def display_edit_data_page():
                             st.success("Data berhasil diperbarui!")
                             st.balloons()
                             
-                            # Tambahkan poin untuk kontributor
                             current_points = updater_data.get("points", 0)
-                            users_ref.update({"points": current_points + 5}) # Tambah 5 poin
+                            users_ref.update({"points": current_points + 5})
                             st.toast("Anda mendapatkan 5 poin untuk pembaruan ini!")
 
                             st.session_state.edit_mode = False
@@ -597,12 +574,11 @@ def display_profile_page():
 
     st.subheader(f"Nama: {user_data.get('nama', 'N/A')}")
     st.write(f"Email: {user_data.get('email', 'N/A')}")
-    st.write(f"**Poin Anda:** {user_data.get('points', 0)} ⭐") # Tampilkan poin
+    st.write(f"**Poin Anda:** {user_data.get('points', 0)} ⭐")
 
     st.markdown("---")
     st.subheader("Informasi Lokasi dan Perangkat TV Digital")
 
-    # Dapatkan daftar provinsi yang tersedia dari Firebase untuk selectbox
     provinsi_data = db.reference("provinsi").get()
     provinsi_list = sorted(provinsi_data.values()) if provinsi_data else []
     
@@ -613,10 +589,8 @@ def display_profile_page():
     current_antenna_brand = user_data.get('antenna_brand', '')
 
     with st.form("profile_form"):
-        # Menentukan indeks awal untuk selectbox provinsi
         default_provinsi_index = 0
         if current_provinsi in provinsi_list:
-            # +1 karena ada opsi kosong di awal ['']
             default_provinsi_index = provinsi_list.index(current_provinsi) + 1 
 
         new_provinsi = st.selectbox("Provinsi Anda", options=[""] + provinsi_list, index=default_provinsi_index, key="profile_provinsi")
@@ -638,7 +612,7 @@ def display_profile_page():
                 user_ref.update(updates)
                 st.success("Profil berhasil diperbarui!")
                 time.sleep(1)
-                st.rerun() # Muat ulang untuk menampilkan perubahan
+                st.rerun()
             except Exception as e:
                 st.error(f"Gagal memperbarui profil: {e}")
 
@@ -657,7 +631,6 @@ def display_other_users_page():
 
     all_users = db.reference("users").get() or {}
     
-    # Filter pengguna agar tidak menampilkan profil sendiri
     other_users = {
         username: data for username, data in all_users.items() 
         if username != st.session_state.username
@@ -669,7 +642,6 @@ def display_other_users_page():
             switch_page("beranda")
         return
 
-    # Tampilkan daftar pengguna dalam bentuk selectbox
     user_display_names = ["Pilih Pengguna"] + sorted([data.get('nama', username) for username, data in other_users.items()])
     
     selected_display_name = st.selectbox(
@@ -680,7 +652,6 @@ def display_other_users_page():
 
     selected_username = None
     if selected_display_name != "Pilih Pengguna":
-        # Cari username berdasarkan nama tampilan yang dipilih
         for username, data in other_users.items():
             if data.get('nama', username) == selected_display_name:
                 selected_username = username
@@ -696,9 +667,7 @@ def display_other_users_page():
 
         if selected_user_data:
             st.write(f"**Nama:** {selected_user_data.get('nama', 'N/A')}")
-            st.write(f"**Poin:** {selected_user_data.get('points', 0)} ⭐") # Tampilkan poin pengguna lain
-            # Email tidak ditampilkan untuk privasi
-            # st.write(f"**Email:** {selected_user_data.get('email', 'N/A')}") 
+            st.write(f"**Poin:** {selected_user_data.get('points', 0)} ⭐")
             st.write(f"**Provinsi:** {selected_user_data.get('provinsi', 'N/A')}")
             st.write(f"**Wilayah Layanan:** {selected_user_data.get('wilayah', 'N/A')}")
             st.write(f"**Merk TV:** {selected_user_data.get('tv_brand', 'N/A')}")
@@ -723,7 +692,6 @@ def display_comments_section(provinsi, wilayah, mux_key):
     comments_ref = db.reference(f"siaran/{provinsi}/{wilayah}/{mux_key}/comments")
     comments_data = comments_ref.get() or {}
 
-    # Konversi ke list of dicts dan urutkan berdasarkan timestamp (terbaru di atas)
     comments_list = []
     for comment_id, comment_details in comments_data.items():
         comments_list.append({
@@ -734,15 +702,12 @@ def display_comments_section(provinsi, wilayah, mux_key):
             "text": comment_details.get("text", "")
         })
     
-    # Urutkan berdasarkan timestamp, dari yang terbaru
     comments_list.sort(key=lambda x: x["timestamp"], reverse=True)
 
-    # Tampilkan pesan sukses jika ada
     if st.session_state.comment_success_message:
         st.success(st.session_state.comment_success_message)
-        st.session_state.comment_success_message = "" # Hapus pesan setelah ditampilkan
+        st.session_state.comment_success_message = ""
 
-    # Form untuk menambah komentar baru
     if st.session_state.login:
         with st.form(key=f"comment_form_{provinsi}_{wilayah}_{mux_key}", clear_on_submit=True):
             new_comment_text = st.text_area("Tulis komentar Anda:", key=f"comment_text_{provinsi}_{wilayah}_{mux_key}")
@@ -765,15 +730,14 @@ def display_comments_section(provinsi, wilayah, mux_key):
                             "text": new_comment_text.strip()
                         }
                         
-                        comments_ref.push().set(comment_data) # Gunakan push() untuk ID unik
+                        comments_ref.push().set(comment_data)
                         
-                        # Tambahkan poin untuk kontributor komentar
                         user_ref = db.reference(f"users/{current_username}")
                         current_points = user_ref.child("points").get() or 0
-                        user_ref.update({"points": current_points + 1}) # Tambah 1 poin
+                        user_ref.update({"points": current_points + 1})
                         
                         st.session_state.comment_success_message = "Komentar berhasil dikirim dan Anda mendapatkan 1 poin!"
-                        st.rerun() # Rerun untuk menampilkan komentar baru dan pesan sukses
+                        st.rerun()
                     except Exception as e:
                         st.error(f"Gagal mengirim komentar: {e}")
                 else:
@@ -782,7 +746,6 @@ def display_comments_section(provinsi, wilayah, mux_key):
         st.info("Login untuk dapat menulis komentar.")
 
     st.markdown("---")
-    # Tampilkan komentar yang sudah ada
     if comments_list:
         st.write("### Komentar Sebelumnya:")
         for comment in comments_list:
@@ -798,7 +761,6 @@ def display_leaderboard_page():
 
     all_users = db.reference("users").get() or {}
     
-    # Filter pengguna yang memiliki poin dan urutkan
     leaderboard_data = []
     for username, data in all_users.items():
         if data.get("points", 0) > 0:
@@ -813,9 +775,8 @@ def display_leaderboard_page():
     if leaderboard_data:
         st.write("Berikut adalah daftar kontributor teratas berdasarkan poin:")
         
-        # Tampilkan dalam bentuk tabel
         leaderboard_df = pd.DataFrame(leaderboard_data)
-        leaderboard_df.index = leaderboard_df.index + 1 # Mulai indeks dari 1
+        leaderboard_df.index = leaderboard_df.index + 1
         st.dataframe(leaderboard_df[["nama", "points"]].rename(columns={"nama": "Nama Kontributor", "points": "Poin"}), use_container_width=True)
     else:
         st.info("Belum ada kontributor dengan poin yang tercatat.")
@@ -825,12 +786,105 @@ def display_leaderboard_page():
         switch_page("beranda")
         st.rerun()
 
+## --- FUNGSI BACKFILL OTOMATIS (TANPA TOMBOL ADMIN) ---
+def backfill_contributor_points_integrated_auto():
+    """
+    Fungsi ini akan menghitung ulang dan memperbarui poin kontributor
+    berdasarkan data siaran yang sudah ada. Akan berjalan secara otomatis
+    jika flag di database belum diatur.
+    """
+    # Cek flag di database apakah backfill sudah pernah dijalankan
+    backfill_flag_ref = db.reference("app_settings/backfill_points_completed")
+    backfill_completed = backfill_flag_ref.get()
+
+    if backfill_completed:
+        # Poin sudah pernah di-backfill. Keluar.
+        return
+
+    st.warning("Mendeteksi backfill poin kontributor belum selesai. Memulai proses otomatis...")
+    st.info("Proses ini hanya akan berjalan sekali untuk menginisialisasi poin kontributor lama.")
+
+    siaran_ref = db.reference("siaran")
+    all_siaran_data = siaran_ref.get()
+
+    if not all_siaran_data:
+        st.info("Tidak ada data siaran ditemukan di database untuk backfill. Menandai backfill selesai.")
+        backfill_flag_ref.set(True) # Tandai sebagai selesai jika tidak ada data siaran
+        st.rerun()
+        return
+
+    users_ref = db.reference("users")
+    all_users_data = users_ref.get() or {}
+
+    # Tahap 1: Reset poin semua pengguna menjadi 0 untuk penghitungan ulang yang bersih
+    with st.spinner("Mereset poin semua pengguna..."):
+        for username, user_data in all_users_data.items():
+            if user_data.get("points") != 0:
+                users_ref.child(username).update({"points": 0})
+        st.success("Semua poin pengguna telah direset menjadi 0 sebelum perhitungan ulang.")
+        time.sleep(1) # Beri waktu untuk pesan terlihat
+
+    calculated_points = {username: 0 for username in all_users_data.keys()}
+    processed_mux_entries = {}
+
+    POINTS_FOR_NEW_DATA = 10 # Poin per entri MUX yang dikontribusikan (saat ini)
+
+    total_entries_processed = 0
+    st.info("Menghitung poin berdasarkan kontribusi data siaran...")
+
+    # Tahap 2: Hitung ulang poin berdasarkan riwayat kontribusi
+    with st.spinner("Menganalisis data siaran..."):
+        for provinsi_key, provinsi_data in all_siaran_data.items():
+            if not isinstance(provinsi_data, dict):
+                continue
+
+            for wilayah_key, wilayah_data in provinsi_data.items():
+                if not isinstance(wilayah_data, dict):
+                    continue
+
+                for mux_key, mux_details in wilayah_data.items():
+                    total_entries_processed += 1
+                    if isinstance(mux_details, dict):
+                        updater_username = mux_details.get("last_updated_by_username")
+                        
+                        if updater_username and updater_username in all_users_data:
+                            if updater_username not in processed_mux_entries:
+                                processed_mux_entries[updater_username] = set()
+                            
+                            current_entry_identifier = (provinsi_key, wilayah_key, mux_key)
+
+                            if current_entry_identifier not in processed_mux_entries[updater_username]:
+                                calculated_points[updater_username] += POINTS_FOR_NEW_DATA
+                                processed_mux_entries[updater_username].add(current_entry_identifier)
+        
+    st.info(f"Total {total_entries_processed} entri siaran diproses.")
+    st.info("Memperbarui poin pengguna di database Firebase...")
+
+    # Tahap 3: Perbarui poin di Firebase
+    with st.spinner("Mengupdate poin di database..."):
+        for username, points in calculated_points.items():
+            if points > 0:
+                users_ref.child(username).update({"points": points})
+                st.write(f"✅ {username}: Total **{points}** poin diperbarui.")
+            else:
+                st.write(f"➖ {username}: Tidak ada poin kontribusi data siaran (atau sudah 0).")
+
+    st.success("Proses backfill poin selesai! Poin Anda akan segera diperbarui.")
+    
+    # Sangat Penting: Atur flag di database menjadi TRUE setelah backfill selesai
+    backfill_flag_ref.set(True)
+    
+    time.sleep(2)
+    st.rerun()
+
 # --- ROUTING HALAMAN UTAMA APLIKASI ---
+
+# Panggil fungsi backfill poin secara otomatis di awal
+backfill_contributor_points_integrated_auto()
 
 st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
 display_sidebar()
 
-# --- ROUTING HALAMAN ---
 
 if st.session_state.halaman == "beranda":
     st.header("📺 Data Siaran TV Digital di Indonesia")
@@ -871,9 +925,8 @@ if st.session_state.halaman == "beranda":
                             st.markdown(f"<p style='font-size: small; color: grey;'>Diperbarui oleh: <b>{last_updated_by_name}</b> pada {last_updated_date} pukul {last_updated_time}</p>", unsafe_allow_html=True)
                         else:
                             st.markdown(f"<p style='font-size: small; color: grey;'>Diperbarui oleh: <b>Belum Diperbarui</b> pada N/A pukul N/A</p>", unsafe_allow_html=True)
-                        # Panggil fungsi komentar di sini untuk setiap MUX
                     display_comments_section(selected_provinsi, selected_wilayah, mux_key)
-                    st.markdown("---") # Tambahkan garis pemisah setelah komentar
+                    st.markdown("---")
 
             else: # Specific MUX selected
                 mux_details = mux_data.get(selected_mux_filter, {})
@@ -897,9 +950,8 @@ if st.session_state.halaman == "beranda":
                             st.markdown(f"<p style='font-size: small; color: grey;'>Diperbarui oleh: <b>{last_updated_by_name}</b> pada {last_updated_date} pukul {last_updated_time}</p>", unsafe_allow_html=True)
                         else:
                             st.markdown(f"<p style='font-size: small; color: grey;'>Diperbarui oleh: <b>Belum Diperbarui</b> pada N/A pukul N/A</p>", unsafe_allow_html=True)
-                    # Panggil fungsi komentar di sini untuk MUX spesifik
                     display_comments_section(selected_provinsi, selected_wilayah, selected_mux_filter)
-                    st.markdown("---") # Tambahkan garis pemisah setelah komentar
+                    st.markdown("---")
                 else:
                     st.info("Tidak ada data siaran untuk MUX ini.")
 
@@ -908,7 +960,6 @@ if st.session_state.halaman == "beranda":
     else:
         st.warning("Gagal memuat data provinsi.")
 
-    # Tampilkan form tambah data jika sudah login
     if st.session_state.login:
         display_add_data_form()
     else:
@@ -921,17 +972,14 @@ elif st.session_state.halaman == "login":
     users_ref = db.reference("users")
     users = users_ref.get() or {}
 
-    # Reset state lupa password jika user memilih daftar
     if st.session_state.mode == "Daftar Akun":
         st.session_state.lupa_password = False
     
-    # Navigasi antara Login dan Daftar
     if not st.session_state.lupa_password:
         st.session_state.mode = st.selectbox(
             "Pilih Aksi", ["Login", "Daftar Akun"], key="login_reg_select"
         )
 
-    # Tampilkan form yang sesuai
     if st.session_state.lupa_password:
         display_forgot_password_form(users)
     elif st.session_state.mode == "Login":
@@ -943,22 +991,18 @@ elif st.session_state.halaman == "login":
         switch_page("beranda")
         st.rerun()
 
-# --- Routing untuk halaman edit_data ---
 elif st.session_state.halaman == "edit_data":
-    if not st.session_state.login: # Pastikan user login untuk mengakses halaman edit
+    if not st.session_state.login:
         st.warning("Anda harus login untuk mengakses halaman ini.")
         switch_page("login")
     else:
-        display_edit_data_page() # Panggil fungsi untuk merender halaman edit
+        display_edit_data_page()
 
-# --- Routing untuk halaman profile (profil saya) ---
 elif st.session_state.halaman == "profile":
     display_profile_page()
 
-# --- Routing untuk halaman other_users (lihat profil pengguna lain) ---
 elif st.session_state.halaman == "other_users":
     display_other_users_page()
 
-# --- Routing untuk halaman leaderboard ---
 elif st.session_state.halaman == "leaderboard":
     display_leaderboard_page()

@@ -552,12 +552,6 @@ def display_edit_data_page():
                 switch_page("beranda")
                 st.rerun()
 
----
-## 👤 Halaman Profil Pengguna Saya
-
-Ini adalah fungsi yang memungkinkan pengguna melihat dan mengedit detail profil mereka sendiri.
-
-```python
 def display_profile_page():
     """Menampilkan halaman profil pengguna yang sedang login."""
     st.header("👤 Profil Saya")

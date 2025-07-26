@@ -43,7 +43,8 @@ def initialize_session_state():
         "otp_sent_daftar": False,
         "otp_code_daftar": "",
         "edit_mode": False, # Menandakan apakah sedang dalam mode edit
-        "edit_data": None # Menyimpan data yang sedang diedit
+        "edit_data": None, # Menyimpan data yang sedang diedit
+        "selected_other_user": None # Menyimpan username pengguna lain yang dipilih untuk dilihat
     }
     for key, value in states.items():
         if key not in st.session_state:
@@ -101,6 +102,7 @@ def proses_logout():
     """Membersihkan session state saat logout."""
     st.session_state.login = False
     st.session_state.username = ""
+    st.session_state.selected_other_user = None # Tambahkan reset ini
     switch_page("beranda")
 
 # --- FUNGSI UNTUK MERENDER KOMPONEN UI ---
@@ -113,7 +115,15 @@ def display_sidebar():
         nama_pengguna = user_data.get("nama", st.session_state.username)
 
         st.sidebar.title(f"Hai, {nama_pengguna}!")
+        if st.sidebar.button("👤 Profil Saya"):
+            st.session_state.selected_other_user = None # Pastikan tidak melihat profil orang lain
+            switch_page("profile")
+            st.rerun()
+        if st.sidebar.button("👥 Lihat Profil Pengguna Lain"): # Tombol baru
+            switch_page("other_users")
+            st.rerun()
         st.sidebar.button("🚪 Logout", on_click=proses_logout)
+
 
 def display_login_form(users):
     """Menampilkan form untuk login."""
@@ -542,8 +552,157 @@ def display_edit_data_page():
                 switch_page("beranda")
                 st.rerun()
 
-# --- HALAMAN UTAMA APLIKASI ---
+---
+## 👤 Halaman Profil Pengguna Saya
 
+Ini adalah fungsi yang memungkinkan pengguna melihat dan mengedit detail profil mereka sendiri.
+
+```python
+def display_profile_page():
+    """Menampilkan halaman profil pengguna yang sedang login."""
+    st.header("👤 Profil Saya")
+
+    if not st.session_state.login:
+        st.warning("Anda harus login untuk melihat profil Anda.")
+        switch_page("login")
+        return
+
+    username = st.session_state.username
+    user_ref = db.reference(f"users/{username}")
+    user_data = user_ref.get()
+
+    if not user_data:
+        st.error("Data profil tidak ditemukan.")
+        if st.button("Kembali ke Beranda"):
+            switch_page("beranda")
+        return
+
+    st.subheader(f"Nama: {user_data.get('nama', 'N/A')}")
+    st.write(f"Email: {user_data.get('email', 'N/A')}")
+
+    st.markdown("---")
+    st.subheader("Informasi Lokasi dan Perangkat TV Digital")
+
+    # Dapatkan daftar provinsi yang tersedia dari Firebase untuk selectbox
+    provinsi_data = db.reference("provinsi").get()
+    provinsi_list = sorted(provinsi_data.values()) if provinsi_data else []
+    
+    current_provinsi = user_data.get('provinsi', None)
+    current_wilayah = user_data.get('wilayah', '')
+    current_tv_brand = user_data.get('tv_brand', '')
+    current_stb_brand = user_data.get('stb_brand', '')
+    current_antenna_brand = user_data.get('antenna_brand', '')
+
+    with st.form("profile_form"):
+        # Menentukan indeks awal untuk selectbox provinsi
+        default_provinsi_index = 0
+        if current_provinsi in provinsi_list:
+            # +1 karena ada opsi kosong di awal ['']
+            default_provinsi_index = provinsi_list.index(current_provinsi) + 1 
+
+        new_provinsi = st.selectbox("Provinsi Anda", options=[""] + provinsi_list, index=default_provinsi_index, key="profile_provinsi")
+        new_wilayah = st.text_input("Wilayah Layanan Anda", value=current_wilayah, key="profile_wilayah")
+        new_tv_brand = st.text_input("Merk TV Anda", value=current_tv_brand, key="profile_tv_brand")
+        new_stb_brand = st.text_input("Merk STB Anda", value=current_stb_brand, key="profile_stb_brand")
+        new_antenna_brand = st.text_input("Merk Antena Anda", value=current_antenna_brand, key="profile_antenna_brand")
+
+        submitted = st.form_submit_button("Simpan Perubahan Profil")
+        if submitted:
+            updates = {
+                "provinsi": new_provinsi,
+                "wilayah": new_wilayah.strip(),
+                "tv_brand": new_tv_brand.strip(),
+                "stb_brand": new_stb_brand.strip(),
+                "antenna_brand": new_antenna_brand.strip()
+            }
+            try:
+                user_ref.update(updates)
+                st.success("Profil berhasil diperbarui!")
+                time.sleep(1)
+                st.rerun() # Muat ulang untuk menampilkan perubahan
+            except Exception as e:
+                st.error(f"Gagal memperbarui profil: {e}")
+
+    if st.button("⬅️ Kembali ke Beranda"):
+        switch_page("beranda")
+        st.rerun()
+
+---
+## 👥 Halaman Melihat Profil Pengguna Lain (Baru)
+
+```python
+def display_other_users_page():
+    """Menampilkan daftar pengguna lain dan memungkinkan untuk melihat profil mereka."""
+    st.header("👥 Profil Pengguna Lain")
+
+    if not st.session_state.login:
+        st.warning("Anda harus login untuk melihat profil pengguna lain.")
+        switch_page("login")
+        return
+
+    all_users = db.reference("users").get() or {}
+    
+    # Filter pengguna agar tidak menampilkan profil sendiri
+    other_users = {
+        username: data for username, data in all_users.items() 
+        if username != st.session_state.username
+    }
+
+    if not other_users:
+        st.info("Tidak ada pengguna lain yang terdaftar saat ini.")
+        if st.button("⬅️ Kembali ke Beranda"):
+            switch_page("beranda")
+        return
+
+    # Tampilkan daftar pengguna dalam bentuk selectbox
+    user_display_names = ["Pilih Pengguna"] + sorted([data.get('nama', username) for username, data in other_users.items()])
+    
+    selected_display_name = st.selectbox(
+        "Pilih Pengguna untuk Dilihat Profilnya", 
+        user_display_names,
+        key="select_other_user"
+    )
+
+    selected_username = None
+    if selected_display_name != "Pilih Pengguna":
+        # Cari username berdasarkan nama tampilan yang dipilih
+        for username, data in other_users.items():
+            if data.get('nama', username) == selected_display_name:
+                selected_username = username
+                break
+
+    st.session_state.selected_other_user = selected_username
+
+    if st.session_state.selected_other_user:
+        st.markdown("---")
+        st.subheader(f"Profil dari {selected_display_name}")
+        
+        selected_user_data = all_users.get(st.session_state.selected_other_user)
+
+        if selected_user_data:
+            st.write(f"**Nama:** {selected_user_data.get('nama', 'N/A')}")
+            # Email tidak ditampilkan untuk privasi
+            # st.write(f"**Email:** {selected_user_data.get('email', 'N/A')}") 
+            st.write(f"**Provinsi:** {selected_user_data.get('provinsi', 'N/A')}")
+            st.write(f"**Wilayah Layanan:** {selected_user_data.get('wilayah', 'N/A')}")
+            st.write(f"**Merk TV:** {selected_user_data.get('tv_brand', 'N/A')}")
+            st.write(f"**Merk STB:** {selected_user_data.get('stb_brand', 'N/A')}")
+            st.write(f"**Merk Antena:** {selected_user_data.get('antenna_brand', 'N/A')}")
+        else:
+            st.warning("Data profil pengguna yang dipilih tidak ditemukan.")
+    
+    st.markdown("---")
+    if st.button("⬅️ Kembali ke Beranda"):
+        st.session_state.selected_other_user = None
+        switch_page("beranda")
+        st.rerun()
+
+---
+## 🗺️ Routing Halaman Utama Aplikasi
+
+Bagian ini mengontrol halaman mana yang ditampilkan berdasarkan `st.session_state.halaman`.
+
+```python
 st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
 display_sidebar()
 
@@ -663,3 +822,11 @@ elif st.session_state.halaman == "edit_data":
         switch_page("login")
     else:
         display_edit_data_page() # Panggil fungsi untuk merender halaman edit
+
+# --- Routing untuk halaman profile (profil saya) ---
+elif st.session_state.halaman == "profile":
+    display_profile_page()
+
+# --- Routing untuk halaman other_users (lihat profil pengguna lain) ---
+elif st.session_state.halaman == "other_users":
+    display_other_users_page()

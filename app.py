@@ -708,6 +708,7 @@ def display_comments_section(provinsi, wilayah, mux_key):
         st.success(st.session_state.comment_success_message)
         st.session_state.comment_success_message = ""
 
+    # MODIFIKASI DIMULAI DI SINI
     if st.session_state.login:
         with st.form(key=f"comment_form_{provinsi}_{wilayah}_{mux_key}", clear_on_submit=True):
             new_comment_text = st.text_area("Tulis komentar Anda:", key=f"comment_text_{provinsi}_{wilayah}_{mux_key}")
@@ -742,8 +743,12 @@ def display_comments_section(provinsi, wilayah, mux_key):
                         st.error(f"Gagal mengirim komentar: {e}")
                 else:
                     st.warning("Komentar tidak boleh kosong.")
-    else:
-        st.info("Login untuk dapat menulis komentar.")
+    else: # Jika belum login
+        if not comments_list: # Jika belum login DAN belum ada komentar
+            st.info("Login untuk dapat menulis komentar. Belum ada komentar untuk MUX ini.")
+        else: # Jika belum login TAPI sudah ada komentar
+            st.info("Login untuk dapat menulis komentar.")
+    # MODIFIKASI BERAKHIR DI SINI
 
     st.markdown("---")
     if comments_list:
@@ -752,8 +757,6 @@ def display_comments_section(provinsi, wilayah, mux_key):
             st.markdown(f"**{comment['nama_pengguna']}** ({comment['timestamp']}):")
             st.write(comment['text'])
             st.markdown("---")
-    else:
-        st.info("Belum ada komentar untuk MUX ini.")
 
 def display_leaderboard_page():
     """Menampilkan halaman leaderboard kontributor."""

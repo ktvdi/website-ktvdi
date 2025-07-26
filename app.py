@@ -167,28 +167,36 @@ def display_forgot_password_form(users):
     st.header("🔑 Reset Password")
 
     if not st.session_state.otp_sent:
-        lupa_nama = st.text_input("Nama Lengkap", key="reset_nama")
-        username = st.text_input("Username", key="reset_user")
+        # Mengubah input menjadi hanya email
+        reset_email = st.text_input("Email Terdaftar", key="reset_email")
 
         if st.button("Kirim OTP ke Email"):
-            user_data = users.get(username)
-            if not lupa_nama or not username:
-                st.toast("Nama lengkap dan username harus diisi.")
-            elif not user_data:
-                st.toast("❌ Username tidak ditemukan.")
-            elif user_data.get("nama", "").strip().lower() != lupa_nama.strip().lower():
-                st.toast("❌ Nama tidak cocok dengan username terdaftar.")
+            if not reset_email:
+                st.toast("Email tidak boleh kosong.")
+                return
+
+            # Cari username berdasarkan email
+            found_username = None
+            user_data = None
+            for user_key, data in users.items():
+                if data.get("email", "").strip().lower() == reset_email.strip().lower():
+                    found_username = user_key
+                    user_data = data
+                    break
+
+            if not found_username:
+                st.toast("❌ Email tidak ditemukan atau tidak terdaftar.")
             else:
                 otp = generate_otp()
                 if send_otp_email(user_data["email"], otp, purpose="reset"):
                     st.session_state.otp_code = otp
-                    st.session_state.reset_username = username
+                    st.session_state.reset_username = found_username # Simpan username yang ditemukan
                     st.session_state.otp_sent = True
                     st.success(f"OTP berhasil dikirim ke {user_data['email']}.")
                     time.sleep(2)
                     st.rerun()
 
-    else:
+    else: # OTP sudah terkirim, tampilkan form untuk input OTP dan password baru
         input_otp = st.text_input("Masukkan Kode OTP", key="reset_otp")
         new_pw = st.text_input("Password Baru", type="password", key="reset_new_pw")
 
@@ -205,12 +213,18 @@ def display_forgot_password_form(users):
                 
                 st.session_state.lupa_password = False
                 st.session_state.otp_sent = False
+                # Hapus data reset dari session state agar bersih
+                st.session_state.reset_username = ""
+                st.session_state.otp_code = ""
                 time.sleep(2)
                 st.rerun()
 
+    # Tombol Batalkan tetap di luar blok if/else otp_sent untuk aksesibilitas
     if st.button("❌ Batalkan"):
         st.session_state.lupa_password = False
         st.session_state.otp_sent = False
+        st.session_state.reset_username = "" # Bersihkan juga
+        st.session_state.otp_code = "" # Bersihkan juga
         st.rerun()
 
 def display_registration_form(users):

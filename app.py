@@ -167,7 +167,6 @@ def display_forgot_password_form(users):
     st.header("🔑 Reset Password")
 
     if not st.session_state.otp_sent:
-        # Mengubah input menjadi hanya email
         reset_email = st.text_input("Email Terdaftar", key="reset_email")
 
         if st.button("Kirim OTP ke Email"):
@@ -193,10 +192,15 @@ def display_forgot_password_form(users):
                     st.session_state.reset_username = found_username # Simpan username yang ditemukan
                     st.session_state.otp_sent = True
                     st.success(f"OTP berhasil dikirim ke {user_data['email']}.")
+                    # Tampilkan username di sini
+                    st.info(f"Username Anda adalah: **{found_username}**")
                     time.sleep(2)
                     st.rerun()
 
     else: # OTP sudah terkirim, tampilkan form untuk input OTP dan password baru
+        # Tampilkan username yang disimpan di session_state
+        st.info(f"Kode OTP dikirim ke email Anda. Username Anda adalah: **{st.session_state.reset_username}**")
+        
         input_otp = st.text_input("Masukkan Kode OTP", key="reset_otp")
         new_pw = st.text_input("Password Baru", type="password", key="reset_new_pw")
 
@@ -213,18 +217,16 @@ def display_forgot_password_form(users):
                 
                 st.session_state.lupa_password = False
                 st.session_state.otp_sent = False
-                # Hapus data reset dari session state agar bersih
                 st.session_state.reset_username = ""
                 st.session_state.otp_code = ""
                 time.sleep(2)
                 st.rerun()
 
-    # Tombol Batalkan tetap di luar blok if/else otp_sent untuk aksesibilitas
     if st.button("❌ Batalkan"):
         st.session_state.lupa_password = False
         st.session_state.otp_sent = False
-        st.session_state.reset_username = "" # Bersihkan juga
-        st.session_state.otp_code = "" # Bersihkan juga
+        st.session_state.reset_username = ""
+        st.session_state.otp_code = ""
         st.rerun()
 
 def display_registration_form(users):

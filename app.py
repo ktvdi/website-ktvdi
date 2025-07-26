@@ -5,6 +5,7 @@ import smtplib
 import random
 import time
 import re
+import pandas as pd # Import pandas untuk leaderboard
 from email.mime.text import MIMEText
 from firebase_admin import credentials, db
 from pytz import timezone
@@ -44,7 +45,8 @@ def initialize_session_state():
         "otp_code_daftar": "",
         "edit_mode": False, # Menandakan apakah sedang dalam mode edit
         "edit_data": None, # Menyimpan data yang sedang diedit
-        "selected_other_user": None # Menyimpan username pengguna lain yang dipilih untuk dilihat
+        "selected_other_user": None, # Menyimpan username pengguna lain yang dipilih untuk dilihat
+        "comment_success_message": "" # Tambahkan ini untuk pesan sukses komentar
     }
     for key, value in states.items():
         if key not in st.session_state:
@@ -113,8 +115,12 @@ def display_sidebar():
         users = db.reference("users").get() or {}
         user_data = users.get(st.session_state.username, {})
         nama_pengguna = user_data.get("nama", st.session_state.username)
+        user_points = user_data.get("points", 0) # Ambil poin pengguna
 
         st.sidebar.title(f"Hai, {nama_pengguna}!")
+        st.sidebar.markdown(f"**Poin Anda:** {user_points} ⭐") # Tampilkan poin
+        st.sidebar.markdown("---") # Garis pemisah
+
         if st.sidebar.button("👤 Profil Saya"):
             st.session_state.selected_other_user = None # Pastikan tidak melihat profil orang lain
             switch_page("profile")
@@ -122,8 +128,11 @@ def display_sidebar():
         if st.sidebar.button("👥 Lihat Profil Pengguna Lain"): # Tombol baru
             switch_page("other_users")
             st.rerun()
+        # Tambahkan tombol untuk Leaderboard
+        if st.sidebar.button("🏆 Leaderboard"):
+            switch_page("leaderboard")
+            st.rerun()
         st.sidebar.button("🚪 Logout", on_click=proses_logout)
-
 
 def display_login_form(users):
     """Menampilkan form untuk login."""
@@ -258,7 +267,8 @@ def display_registration_form(users):
                 db.reference("users").child(reg_data["user"]).set({
                     "nama": reg_data["nama"],
                     "password": hash_password(reg_data["pw"]),
-                    "email": reg_data["email"]
+                    "email": reg_data["email"],
+                    "points": 0 # Inisialisasi poin menjadi 0
                 })
                 st.success("✅ Akun berhasil dibuat! Silakan login.")
                 
@@ -344,8 +354,9 @@ def display_add_data_form():
                 if is_valid:
                     try:
                         updater_username = st.session_state.username
-                        users_ref = db.reference("users").child(updater_username).get()
-                        updater_name = users_ref.get("nama", updater_username)
+                        users_ref = db.reference(f"users/{updater_username}") # Ambil referensi user
+                        updater_data = users_ref.get()
+                        updater_name = updater_data.get("nama", updater_username)
                         
                         now_wib = datetime.now(WIB)
                         updated_date = now_wib.strftime("%d-%m-%Y")
@@ -362,6 +373,12 @@ def display_add_data_form():
                         db.reference(f"siaran/{provinsi}/{wilayah_clean}/{mux_clean}").set(data_to_save)
                         st.success("Data berhasil disimpan!")
                         st.balloons()
+                        
+                        # Tambahkan poin untuk kontributor
+                        current_points = updater_data.get("points", 0)
+                        users_ref.update({"points": current_points + 10}) # Tambah 10 poin
+                        st.toast("Anda mendapatkan 10 poin untuk kontribusi ini!")
+
                         time.sleep(1)
                         st.rerun()
                     except Exception as e:
@@ -512,8 +529,9 @@ def display_edit_data_page():
                     if is_valid:
                         try:
                             updater_username = st.session_state.username
-                            users_ref = db.reference("users").child(updater_username).get()
-                            updater_name = users_ref.get("nama", updater_username)
+                            users_ref = db.reference(f"users/{updater_username}") # Ambil referensi user
+                            updater_data = users_ref.get()
+                            updater_name = updater_data.get("nama", updater_username)
                             
                             now_wib = datetime.now(WIB)
                             updated_date = now_wib.strftime("%d-%m-%Y")
@@ -538,6 +556,12 @@ def display_edit_data_page():
                                 
                             st.success("Data berhasil diperbarui!")
                             st.balloons()
+                            
+                            # Tambahkan poin untuk kontributor
+                            current_points = updater_data.get("points", 0)
+                            users_ref.update({"points": current_points + 5}) # Tambah 5 poin
+                            st.toast("Anda mendapatkan 5 poin untuk pembaruan ini!")
+
                             st.session_state.edit_mode = False
                             st.session_state.edit_data = None
                             time.sleep(1)
@@ -573,6 +597,7 @@ def display_profile_page():
 
     st.subheader(f"Nama: {user_data.get('nama', 'N/A')}")
     st.write(f"Email: {user_data.get('email', 'N/A')}")
+    st.write(f"**Poin Anda:** {user_data.get('points', 0)} ⭐") # Tampilkan poin
 
     st.markdown("---")
     st.subheader("Informasi Lokasi dan Perangkat TV Digital")
@@ -671,6 +696,7 @@ def display_other_users_page():
 
         if selected_user_data:
             st.write(f"**Nama:** {selected_user_data.get('nama', 'N/A')}")
+            st.write(f"**Poin:** {selected_user_data.get('points', 0)} ⭐") # Tampilkan poin pengguna lain
             # Email tidak ditampilkan untuk privasi
             # st.write(f"**Email:** {selected_user_data.get('email', 'N/A')}") 
             st.write(f"**Provinsi:** {selected_user_data.get('provinsi', 'N/A')}")
@@ -686,6 +712,120 @@ def display_other_users_page():
         st.session_state.selected_other_user = None
         switch_page("beranda")
         st.rerun()
+
+def display_comments_section(provinsi, wilayah, mux_key):
+    """
+    Menampilkan bagian komentar untuk MUX tertentu dan memungkinkan pengguna menambah komentar.
+    """
+    st.markdown("---")
+    st.subheader("💬 Komentar Pengguna")
+
+    comments_ref = db.reference(f"siaran/{provinsi}/{wilayah}/{mux_key}/comments")
+    comments_data = comments_ref.get() or {}
+
+    # Konversi ke list of dicts dan urutkan berdasarkan timestamp (terbaru di atas)
+    comments_list = []
+    for comment_id, comment_details in comments_data.items():
+        comments_list.append({
+            "id": comment_id,
+            "username": comment_details.get("username", "Anonim"),
+            "nama_pengguna": comment_details.get("nama_pengguna", "Anonim"),
+            "timestamp": comment_details.get("timestamp", "N/A"),
+            "text": comment_details.get("text", "")
+        })
+    
+    # Urutkan berdasarkan timestamp, dari yang terbaru
+    comments_list.sort(key=lambda x: x["timestamp"], reverse=True)
+
+    # Tampilkan pesan sukses jika ada
+    if st.session_state.comment_success_message:
+        st.success(st.session_state.comment_success_message)
+        st.session_state.comment_success_message = "" # Hapus pesan setelah ditampilkan
+
+    # Form untuk menambah komentar baru
+    if st.session_state.login:
+        with st.form(key=f"comment_form_{provinsi}_{wilayah}_{mux_key}", clear_on_submit=True):
+            new_comment_text = st.text_area("Tulis komentar Anda:", key=f"comment_text_{provinsi}_{wilayah}_{mux_key}")
+            submit_comment = st.form_submit_button("Kirim Komentar")
+
+            if submit_comment:
+                if new_comment_text.strip():
+                    try:
+                        current_username = st.session_state.username
+                        user_data = db.reference(f"users/{current_username}").get()
+                        current_user_name = user_data.get("nama", current_username)
+                        
+                        now_wib = datetime.now(WIB)
+                        comment_timestamp = now_wib.strftime("%Y-%m-%d %H:%M:%S WIB")
+
+                        comment_data = {
+                            "username": current_username,
+                            "nama_pengguna": current_user_name,
+                            "timestamp": comment_timestamp,
+                            "text": new_comment_text.strip()
+                        }
+                        
+                        comments_ref.push().set(comment_data) # Gunakan push() untuk ID unik
+                        
+                        # Tambahkan poin untuk kontributor komentar
+                        user_ref = db.reference(f"users/{current_username}")
+                        current_points = user_ref.child("points").get() or 0
+                        user_ref.update({"points": current_points + 1}) # Tambah 1 poin
+                        
+                        st.session_state.comment_success_message = "Komentar berhasil dikirim dan Anda mendapatkan 1 poin!"
+                        st.rerun() # Rerun untuk menampilkan komentar baru dan pesan sukses
+                    except Exception as e:
+                        st.error(f"Gagal mengirim komentar: {e}")
+                else:
+                    st.warning("Komentar tidak boleh kosong.")
+    else:
+        st.info("Login untuk dapat menulis komentar.")
+
+    st.markdown("---")
+    # Tampilkan komentar yang sudah ada
+    if comments_list:
+        st.write("### Komentar Sebelumnya:")
+        for comment in comments_list:
+            st.markdown(f"**{comment['nama_pengguna']}** ({comment['timestamp']}):")
+            st.write(comment['text'])
+            st.markdown("---")
+    else:
+        st.info("Belum ada komentar untuk MUX ini.")
+
+def display_leaderboard_page():
+    """Menampilkan halaman leaderboard kontributor."""
+    st.header("🏆 Leaderboard Kontributor")
+
+    all_users = db.reference("users").get() or {}
+    
+    # Filter pengguna yang memiliki poin dan urutkan
+    leaderboard_data = []
+    for username, data in all_users.items():
+        if data.get("points", 0) > 0:
+            leaderboard_data.append({
+                "nama": data.get("nama", username),
+                "username": username,
+                "points": data.get("points", 0)
+            })
+    
+    leaderboard_data.sort(key=lambda x: x["points"], reverse=True)
+
+    if leaderboard_data:
+        st.write("Berikut adalah daftar kontributor teratas berdasarkan poin:")
+        
+        # Tampilkan dalam bentuk tabel
+        leaderboard_df = pd.DataFrame(leaderboard_data)
+        leaderboard_df.index = leaderboard_df.index + 1 # Mulai indeks dari 1
+        st.dataframe(leaderboard_df[["nama", "points"]].rename(columns={"nama": "Nama Kontributor", "points": "Poin"}), use_container_width=True)
+    else:
+        st.info("Belum ada kontributor dengan poin yang tercatat.")
+    
+    st.markdown("---")
+    if st.button("⬅️ Kembali ke Beranda"):
+        switch_page("beranda")
+        st.rerun()
+
+# --- ROUTING HALAMAN UTAMA APLIKASI ---
 
 st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
 display_sidebar()
@@ -731,7 +871,9 @@ if st.session_state.halaman == "beranda":
                             st.markdown(f"<p style='font-size: small; color: grey;'>Diperbarui oleh: <b>{last_updated_by_name}</b> pada {last_updated_date} pukul {last_updated_time}</p>", unsafe_allow_html=True)
                         else:
                             st.markdown(f"<p style='font-size: small; color: grey;'>Diperbarui oleh: <b>Belum Diperbarui</b> pada N/A pukul N/A</p>", unsafe_allow_html=True)
-                        st.markdown("---")
+                        # Panggil fungsi komentar di sini untuk setiap MUX
+                    display_comments_section(selected_provinsi, selected_wilayah, mux_key)
+                    st.markdown("---") # Tambahkan garis pemisah setelah komentar
 
             else: # Specific MUX selected
                 mux_details = mux_data.get(selected_mux_filter, {})
@@ -755,7 +897,9 @@ if st.session_state.halaman == "beranda":
                             st.markdown(f"<p style='font-size: small; color: grey;'>Diperbarui oleh: <b>{last_updated_by_name}</b> pada {last_updated_date} pukul {last_updated_time}</p>", unsafe_allow_html=True)
                         else:
                             st.markdown(f"<p style='font-size: small; color: grey;'>Diperbarui oleh: <b>Belum Diperbarui</b> pada N/A pukul N/A</p>", unsafe_allow_html=True)
-                        st.markdown("---")
+                    # Panggil fungsi komentar di sini untuk MUX spesifik
+                    display_comments_section(selected_provinsi, selected_wilayah, selected_mux_filter)
+                    st.markdown("---") # Tambahkan garis pemisah setelah komentar
                 else:
                     st.info("Tidak ada data siaran untuk MUX ini.")
 
@@ -814,3 +958,7 @@ elif st.session_state.halaman == "profile":
 # --- Routing untuk halaman other_users (lihat profil pengguna lain) ---
 elif st.session_state.halaman == "other_users":
     display_other_users_page()
+
+# --- Routing untuk halaman leaderboard ---
+elif st.session_state.halaman == "leaderboard":
+    display_leaderboard_page()

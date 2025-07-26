@@ -745,7 +745,7 @@ def display_comments_section(provinsi, wilayah, mux_key):
                     st.warning("Komentar tidak boleh kosong.")
     else: # Jika belum login
         if not comments_list: # Jika belum login DAN belum ada komentar
-            st.info("Login untuk dapat menulis komentar. Belum ada komentar untuk MUX ini.")
+            st.info("Belum ada komentar untuk MUX ini. Login untuk dapat menulis komentar!")
         else: # Jika belum login TAPI sudah ada komentar
             st.info("Login untuk dapat menulis komentar.")
     # MODIFIKASI BERAKHIR DI SINI

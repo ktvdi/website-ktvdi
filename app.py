@@ -786,105 +786,10 @@ def display_leaderboard_page():
         switch_page("beranda")
         st.rerun()
 
-## --- FUNGSI BACKFILL OTOMATIS (TANPA TOMBOL ADMIN) ---
-def backfill_contributor_points_integrated_auto():
-    """
-    Fungsi ini akan menghitung ulang dan memperbarui poin kontributor
-    berdasarkan data siaran yang sudah ada. Akan berjalan secara otomatis
-    jika flag di database belum diatur.
-    """
-    # Cek flag di database apakah backfill sudah pernah dijalankan
-    backfill_flag_ref = db.reference("app_settings/backfill_points_completed")
-    backfill_completed = backfill_flag_ref.get()
-
-    if backfill_completed:
-        # Poin sudah pernah di-backfill. Keluar.
-        return
-
-    st.warning("Mendeteksi backfill poin kontributor belum selesai. Memulai proses otomatis...")
-    st.info("Proses ini hanya akan berjalan sekali untuk menginisialisasi poin kontributor lama.")
-
-    siaran_ref = db.reference("siaran")
-    all_siaran_data = siaran_ref.get()
-
-    if not all_siaran_data:
-        st.info("Tidak ada data siaran ditemukan di database untuk backfill. Menandai backfill selesai.")
-        backfill_flag_ref.set(True) # Tandai sebagai selesai jika tidak ada data siaran
-        st.rerun()
-        return
-
-    users_ref = db.reference("users")
-    all_users_data = users_ref.get() or {}
-
-    # Tahap 1: Reset poin semua pengguna menjadi 0 untuk penghitungan ulang yang bersih
-    with st.spinner("Mereset poin semua pengguna..."):
-        for username, user_data in all_users_data.items():
-            if user_data.get("points") != 0:
-                users_ref.child(username).update({"points": 0})
-        st.success("Semua poin pengguna telah direset menjadi 0 sebelum perhitungan ulang.")
-        time.sleep(1) # Beri waktu untuk pesan terlihat
-
-    calculated_points = {username: 0 for username in all_users_data.keys()}
-    processed_mux_entries = {}
-
-    POINTS_FOR_NEW_DATA = 10 # Poin per entri MUX yang dikontribusikan (saat ini)
-
-    total_entries_processed = 0
-    st.info("Menghitung poin berdasarkan kontribusi data siaran...")
-
-    # Tahap 2: Hitung ulang poin berdasarkan riwayat kontribusi
-    with st.spinner("Menganalisis data siaran..."):
-        for provinsi_key, provinsi_data in all_siaran_data.items():
-            if not isinstance(provinsi_data, dict):
-                continue
-
-            for wilayah_key, wilayah_data in provinsi_data.items():
-                if not isinstance(wilayah_data, dict):
-                    continue
-
-                for mux_key, mux_details in wilayah_data.items():
-                    total_entries_processed += 1
-                    if isinstance(mux_details, dict):
-                        updater_username = mux_details.get("last_updated_by_username")
-                        
-                        if updater_username and updater_username in all_users_data:
-                            if updater_username not in processed_mux_entries:
-                                processed_mux_entries[updater_username] = set()
-                            
-                            current_entry_identifier = (provinsi_key, wilayah_key, mux_key)
-
-                            if current_entry_identifier not in processed_mux_entries[updater_username]:
-                                calculated_points[updater_username] += POINTS_FOR_NEW_DATA
-                                processed_mux_entries[updater_username].add(current_entry_identifier)
-        
-    st.info(f"Total {total_entries_processed} entri siaran diproses.")
-    st.info("Memperbarui poin pengguna di database Firebase...")
-
-    # Tahap 3: Perbarui poin di Firebase
-    with st.spinner("Mengupdate poin di database..."):
-        for username, points in calculated_points.items():
-            if points > 0:
-                users_ref.child(username).update({"points": points})
-                st.write(f"✅ {username}: Total **{points}** poin diperbarui.")
-            else:
-                st.write(f"➖ {username}: Tidak ada poin kontribusi data siaran (atau sudah 0).")
-
-    st.success("Proses backfill poin selesai! Poin Anda akan segera diperbarui.")
-    
-    # Sangat Penting: Atur flag di database menjadi TRUE setelah backfill selesai
-    backfill_flag_ref.set(True)
-    
-    time.sleep(2)
-    st.rerun()
-
 # --- ROUTING HALAMAN UTAMA APLIKASI ---
-
-# Panggil fungsi backfill poin secara otomatis di awal
-backfill_contributor_points_integrated_auto()
 
 st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
 display_sidebar()
-
 
 if st.session_state.halaman == "beranda":
     st.header("📺 Data Siaran TV Digital di Indonesia")

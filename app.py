@@ -781,6 +781,7 @@ def display_leaderboard_page():
     
     leaderboard_data = []
     for username, data in all_users.items():
+        # Hanya tampilkan pengguna yang memiliki poin > 0
         if data.get("points", 0) > 0:
             leaderboard_data.append({
                 "nama": data.get("nama", username),
@@ -790,12 +791,19 @@ def display_leaderboard_page():
     
     leaderboard_data.sort(key=lambda x: x["points"], reverse=True)
 
+    # Dapatkan waktu saat ini dalam WIB
+    now_wib = datetime.now(WIB)
+    update_time_str = now_wib.strftime("%d-%m-%Y %H:%M:%S WIB")
+
     if leaderboard_data:
         st.write("Berikut adalah daftar kontributor teratas berdasarkan poin:")
         
         leaderboard_df = pd.DataFrame(leaderboard_data)
         leaderboard_df.index = leaderboard_df.index + 1
         st.dataframe(leaderboard_df[["nama", "points"]].rename(columns={"nama": "Nama Kontributor", "points": "Poin"}), use_container_width=True)
+        
+        # Tambahkan keterangan waktu update
+        st.markdown(f"<p style='font-size: small; color: grey;'>Data diperbarui pada: {update_time_str}</p>", unsafe_allow_html=True)
     else:
         st.info("Belum ada kontributor dengan poin yang tercatat.")
     

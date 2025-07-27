@@ -381,6 +381,7 @@ def display_add_data_form():
                         
                         current_points = updater_data.get("points", 0)
                         users_ref.update({"points": current_points + 10})
+                        db.reference("app_metadata/last_leaderboard_update_timestamp").set(now_wib.strftime("%Y-%m-%d %H:%M:%S"))
                         st.toast("Anda mendapatkan 10 poin untuk kontribusi ini!")
 
                         time.sleep(1)
@@ -553,6 +554,7 @@ def display_edit_data_page():
                             
                             current_points = updater_data.get("points", 0)
                             users_ref.update({"points": current_points + 5})
+                            db.reference("app_metadata/last_leaderboard_update_timestamp").set(now_wib.strftime("%Y-%m-%d %H:%M:%S"))
                             st.toast("Anda mendapatkan 5 poin untuk pembaruan ini!")
 
                             st.session_state.edit_mode = False
@@ -751,6 +753,7 @@ def display_comments_section(provinsi, wilayah, mux_key):
                         user_ref = db.reference(f"users/{current_username}")
                         current_points = user_ref.child("points").get() or 0
                         user_ref.update({"points": current_points + 1})
+                        db.reference("app_metadata/last_leaderboard_update_timestamp").set(now_wib.strftime("%Y-%m-%d %H:%M:%S"))
                         
                         st.session_state.comment_success_message = "Komentar berhasil dikirim dan Anda mendapatkan 1 poin!"
                         st.rerun()

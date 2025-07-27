@@ -784,7 +784,6 @@ def display_leaderboard_page():
     
     leaderboard_data = []
     for username, data in all_users.items():
-        # Hanya tampilkan pengguna yang memiliki poin > 0
         if data.get("points", 0) > 0:
             leaderboard_data.append({
                 "nama": data.get("nama", username),
@@ -794,9 +793,33 @@ def display_leaderboard_page():
     
     leaderboard_data.sort(key=lambda x: x["points"], reverse=True)
 
-    # Dapatkan waktu saat ini dalam WIB
-    now_wib = datetime.now(WIB)
-    update_time_str = now_wib.strftime("%d-%m-%Y %H:%M:%S WIB")
+    # --- Bagian yang dimodifikasi untuk membaca timestamp dari Firebase ---
+    last_update_timestamp_str = db.reference("app_metadata/last_leaderboard_update_timestamp").get()
+    
+    # Konversi string timestamp menjadi objek datetime, lalu format ulang ke WIB
+    display_update_time_str = "Belum ada update poin tercatat"
+    if last_update_timestamp_str:
+        try:
+            # Parse string timestamp dari Firebase
+            # Asumsi format: "YYYY-MM-DD HH:MM:SS"
+            dt_object = datetime.strptime(last_update_timestamp_str, "%Y-%m-%d %H:%M:%S")
+            # Firebase tidak menyimpan timezone, jadi kita asumsikan UTC atau waktu server
+            # Kemudian konversi ke WIB untuk tampilan
+            
+            # Jika Anda menyimpan waktu server Firebase (biasanya UTC)
+            # dt_object_utc = pytz.utc.localize(dt_object)
+            # dt_object_wib = dt_object_utc.astimezone(WIB)
+            
+            # Jika Anda menyimpan waktu WIB langsung (seperti di kode sebelumnya)
+            # Maka tidak perlu konversi timezone, cukup lokalisaai untuk memastikan
+            dt_object_wib = WIB.localize(dt_object) # Atau dt_object.astimezone(WIB) jika dt_object sudah ada timezone
+
+            display_update_time_str = dt_object_wib.strftime("%d-%m-%Y %H:%M:%S WIB")
+        except ValueError:
+            display_update_time_str = f"Waktu update tidak valid: {last_update_timestamp_str}"
+        except Exception as e:
+            display_update_time_str = f"Error waktu: {e}"
+    # --- Akhir bagian yang dimodifikasi ---
 
     if leaderboard_data:
         st.write("Berikut adalah daftar kontributor teratas berdasarkan poin:")
@@ -805,11 +828,13 @@ def display_leaderboard_page():
         leaderboard_df.index = leaderboard_df.index + 1
         st.dataframe(leaderboard_df[["nama", "points"]].rename(columns={"nama": "Nama Kontributor", "points": "Poin"}), use_container_width=True)
         
-        # Tambahkan keterangan waktu update
-        st.markdown(f"<p style='font-size: small; color: grey;'>Data diperbarui pada: {update_time_str}</p>", unsafe_allow_html=True)
+        # Tampilkan keterangan waktu update yang baru
+        st.markdown(f"<p style='font-size: small; color: grey;'>Data diperbarui pada: {display_update_time_str}</p>", unsafe_allow_html=True)
     else:
         st.info("Belum ada kontributor dengan poin yang tercatat.")
-    
+        # Tampilkan juga keterangan waktu jika tidak ada data
+        st.markdown(f"<p style='font-size: small; color: grey;'>Terakhir diperbarui: {display_update_time_str}</p>", unsafe_allow_html=True) # Tambahkan ini
+
     st.markdown("---")
     if st.button("⬅️ Kembali ke Beranda"):
         switch_page("beranda")

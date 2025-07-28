@@ -58,8 +58,8 @@ def initialize_session_state():
         "edit_mode": False, # Menandakan apakah sedang dalam mode edit
         "edit_data": None, # Menyimpan data yang sedang diedit
         "selected_other_user": None, # Menyimpan username pengguna lain yang dipilih untuk dilihat
-        "comment_success_message": "" # Tambahkan ini untuk pesan sukses komentar
-        "messages": [],
+        "comment_success_message": "", # Tambahkan ini untuk pesan sukses komentar
+        "messages": "",
     }
     for key, value in states.items():
         if key not in st.session_state:

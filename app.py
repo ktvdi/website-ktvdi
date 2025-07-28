@@ -784,7 +784,7 @@ if st.session_state.halaman == "beranda":
             else:
                 st.info("Belum ada data wilayah untuk provinsi ini.")
         else:
-            st.warning("Gagal memuat data provinsi.")
+            st.info("Silahkan pilih provinsi terlebih dahulu.")
 
     if st.session_state.login:
         display_add_data_form()

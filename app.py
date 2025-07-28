@@ -936,7 +936,7 @@ def display_chatbot_page():
 
 # --- ROUTING HALAMAN UTAMA APLIKASI ---
 
-st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
+st.title("🇮🇩 KOMUNITAS TV DDIGITAL INDONESIA 🇮🇩")
 display_sidebar()
 
 if st.session_state.halaman == "beranda":

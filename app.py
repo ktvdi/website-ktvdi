@@ -860,7 +860,7 @@ def display_leaderboard_page():
         
 def display_chatbot_page():
     """Menampilkan halaman FAQ Chatbot."""
-    st.header("🤖 FAQ Chatbot KTVDI")
+    st.header("🤖 Chatbot KTVDI")
     st.info("Ajukan pertanyaan seputar KTVDI, TV Digital, atau siaran MUX. Saya akan bantu menjawab!")
 
     # Inisialisasi model generatif dengan instruksi sistem (pengetahuan dasar FAQ)

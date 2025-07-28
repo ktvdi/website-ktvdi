@@ -6,7 +6,7 @@ import random
 import time
 import re
 import pandas as pd
-import google.generativeai as genai # Tambahan baru
+import google.generativeai as genai
 from email.mime.text import MIMEText
 from firebase_admin import credentials, db
 from pytz import timezone
@@ -29,7 +29,7 @@ def initialize_firebase():
             st.error(f"Gagal terhubung ke Firebase: {e}")
             st.stop()
 
-def initialize_gemini(): # Fungsi baru untuk inisialisasi Gemini
+def initialize_gemini():
     """Menginisialisasi koneksi ke Gemini API."""
     try:
         genai.configure(api_key=st.secrets["GEMINI"]["api_key"])
@@ -59,7 +59,7 @@ def initialize_session_state():
         "edit_data": None, # Menyimpan data yang sedang diedit
         "selected_other_user": None, # Menyimpan username pengguna lain yang dipilih untuk dilihat
         "comment_success_message": "", # Tambahkan ini untuk pesan sukses komentar
-        "messages": [], # **PENAMBAHAN BARU UNTUK CHATBOT**
+        "messages": [], # Untuk menyimpan riwayat chat chatbot
     }
     for key, value in states.items():
         if key not in st.session_state:
@@ -68,7 +68,7 @@ def initialize_session_state():
 # Inisialisasi awal
 initialize_firebase()
 initialize_session_state()
-initialize_gemini() # Panggil fungsi inisialisasi Gemini di sini
+initialize_gemini()
 WIB = timezone("Asia/Jakarta")
 
 # --- FUNGSI HELPER UMUM ---
@@ -147,12 +147,10 @@ def get_comment_data(provinsi, wilayah, mux_key):
     try:
         comments_ref = db.reference(f"comments/{provinsi}/{wilayah}/{mux_key}").order_by_child("timestamp").get()
         if comments_ref:
-            # Mengubah dictionary hasil Firebase menjadi list of dictionaries
-            # dan menambahkan username jika ada di users
             comments_list = []
             users_data = db.reference("users").get() or {}
             for comment_key, comment_data in comments_ref.items():
-                if isinstance(comment_data, dict): # Pastikan comment_data adalah dict
+                if isinstance(comment_data, dict):
                     username = comment_data.get("username", "Anonim")
                     nama_pengguna = users_data.get(username, {}).get("nama", username)
                     comment_data["display_name"] = nama_pengguna
@@ -170,7 +168,6 @@ def add_user_points(username, points_to_add):
         current_points = user_ref.child("points").get() or 0
         user_ref.child("points").set(current_points + points_to_add)
         if username == st.session_state.username:
-            # Perbarui poin di session state jika user yang login
             users_data = db.reference(f"users/{st.session_state.username}").get()
             if users_data:
                 st.session_state.user_points = users_data.get("points", 0)
@@ -193,7 +190,7 @@ def display_login_form(users):
                 st.session_state.username = username_login
                 st.session_state.halaman = "beranda"
                 st.success("Login berhasil!")
-                st.session_state.login_error = "" # Reset error
+                st.session_state.login_error = ""
                 st.rerun()
             else:
                 st.session_state.login_error = "Username atau password salah."
@@ -221,7 +218,6 @@ def display_registration_form(users):
     wilayah_domisili = st.text_input("Wilayah Domisili (contoh: Kota Surabaya, Kab. Bandung)", key="wilayah_domisili_reg")
     merk_tv_digital = st.text_input("Merk TV Digital/STB yang Digunakan (contoh: Polytron, Matrix Apple)", key="merk_tv_digital_reg")
     
-    # Validasi email sederhana
     email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     is_valid_email = re.match(email_regex, new_email)
 
@@ -248,7 +244,7 @@ def display_registration_form(users):
                 "created_at": datetime.now(WIB).isoformat()
             })
             st.success("Akun berhasil didaftarkan! Silakan login.")
-            st.session_state.mode = "Login" # Kembali ke mode login
+            st.session_state.mode = "Login"
             st.rerun()
 
 def display_forgot_password_form(users):
@@ -292,9 +288,7 @@ def display_forgot_password_form(users):
                     st.session_state.reset_username = reset_username_val
                     if send_otp_email(reset_email, st.session_state.otp_code):
                         st.session_state.otp_sent = True
-                        # Atur timer untuk OTP (misal 5 menit)
-                        # Ini adalah simulasi, Streamlit akan refresh sehingga timer perlu stateful
-                        st.session_state.otp_expiry_time = time.time() + 300 # 5 menit
+                        st.session_state.otp_expiry_time = time.time() + 300
                         st.success("Kode OTP telah dikirim. Cek email Anda.")
                         st.rerun()
                 else:
@@ -320,7 +314,6 @@ def display_add_data_form():
     )
 
     if provinsi_baru != "Pilih Provinsi":
-        # Jika provinsi sudah dipilih, tampilkan input wilayah dan MUX
         wilayah_layanan = st.text_input(
             "Wilayah Layanan (Contoh: Jakarta-1)",
             placeholder="Contoh: Jawa Timur-1, DKI Jakarta-2",
@@ -355,7 +348,6 @@ def display_add_data_form():
                 st.warning("Harap isi semua Nama Saluran yang ditambahkan.")
             else:
                 try:
-                    # Format data untuk Firebase
                     mux_data = {
                         "penyelenggara": penyelenggara_mux,
                         "siaran": channels,
@@ -366,22 +358,20 @@ def display_add_data_form():
                         "last_updated_at": datetime.now(WIB).isoformat()
                     }
 
-                    # Cek apakah wilayah dan mux sudah ada
                     wilayah_ref = db.reference(f"wilayah/{provinsi_baru}/{wilayah_layanan}")
-                    if not wilayah_ref.get(): # Jika wilayah belum ada, buat
+                    if not wilayah_ref.get():
                         wilayah_ref.set({"name": wilayah_layanan})
 
                     mux_id = penyelenggara_mux.replace('.', '_').replace('#', '_').replace('$', '_').replace('[', '_').replace(']', '_').replace('/', '_')
                     
-                    # Tambahkan data MUX
                     mux_db_ref = db.reference(f"mux/{provinsi_baru}/{wilayah_layanan}/{mux_id}")
                     if mux_db_ref.get():
                         st.warning(f"Data MUX '{penyelenggara_mux}' di wilayah '{wilayah_layanan}' sudah ada. Silakan edit jika perlu.")
                     else:
                         mux_db_ref.set(mux_data)
-                        add_user_points(st.session_state.username, 10) # 10 poin untuk tambah data
+                        add_user_points(st.session_state.username, 10)
                         st.success("Data siaran berhasil ditambahkan!")
-                        st.experimental_rerun() # Refresh halaman untuk melihat data baru
+                        st.experimental_rerun()
 
                 except Exception as e:
                     st.error(f"Terjadi kesalahan saat menyimpan data: {e}")
@@ -413,7 +403,6 @@ def display_edit_data_form():
         edited_channels = []
         for i in range(int(new_num_channels)):
             col1, col2 = st.columns(2)
-            # Isi dengan data yang sudah ada jika indeksnya valid
             default_name = current_channels[i]["nama"] if i < num_current_channels and "nama" in current_channels[i] else ""
             default_status = current_channels[i]["status"] if i < num_current_channels and "status" in current_channels[i] else "Aktif"
 
@@ -442,7 +431,7 @@ def display_edit_data_form():
                         }
                         
                         db.reference(f"mux/{provinsi_edit}/{wilayah_edit}/{mux_key_edit}").update(updated_mux_data)
-                        add_user_points(st.session_state.username, 5) # 5 poin untuk edit data
+                        add_user_points(st.session_state.username, 5)
                         st.success("Data siaran berhasil diperbarui!")
                         st.session_state.edit_mode = False
                         st.session_state.edit_data = None
@@ -505,7 +494,7 @@ def display_profile_page():
                             "merk_tv_digital": new_merk_tv
                         })
                         st.success("Profil berhasil diperbarui!")
-                        st.rerun() # Refresh halaman untuk menampilkan data terbaru
+                        st.rerun()
                     except Exception as e:
                         st.error(f"Gagal memperbarui profil: {e}")
     else:
@@ -522,7 +511,6 @@ def display_other_users_page():
 
     users_data = db.reference("users").get() or {}
     
-    # Filter pengguna yang login dari daftar
     other_users = {u: data for u, data in users_data.items() if u != st.session_state.username}
 
     if not other_users:
@@ -575,7 +563,6 @@ def display_leaderboard_page():
             st.rerun()
         return
 
-    # Konversi data pengguna ke DataFrame dan urutkan berdasarkan poin
     leaderboard_data = []
     for username, data in users_data.items():
         leaderboard_data.append({
@@ -587,7 +574,7 @@ def display_leaderboard_page():
     
     df_leaderboard = pd.DataFrame(leaderboard_data)
     df_leaderboard = df_leaderboard.sort_values(by="Poin", ascending=False).reset_index(drop=True)
-    df_leaderboard.index = df_leaderboard.index + 1 # Mulai indeks dari 1
+    df_leaderboard.index = df_leaderboard.index + 1
 
     st.dataframe(df_leaderboard)
 
@@ -596,7 +583,7 @@ def display_leaderboard_page():
         switch_page("beranda")
         st.rerun()
 
-def display_chatbot_page(): # **PENAMBAHAN FUNGSI HALAMAN CHATBOT**
+def display_chatbot_page():
     """Menampilkan halaman FAQ Chatbot."""
     st.header("🤖 FAQ Chatbot KTVDI")
     st.info("Ajukan pertanyaan seputar KTVDI, TV Digital, atau siaran MUX. Saya akan bantu menjawab!")
@@ -614,7 +601,7 @@ def display_chatbot_page(): # **PENAMBAHAN FUNGSI HALAMAN CHATBOT**
             "Jika pertanyaan di luar cakupan Anda atau memerlukan informasi real-time yang tidak Anda miliki, "
             "arahkan pengguna untuk mencari informasi lebih lanjut di sumber resmi atau bertanya di forum/komunitas terkait TV Digital."
             "\n\nBerikut adalah beberapa contoh FAQ yang bisa Anda jawab dan informasi yang harus Anda pertimbangkan:"
-            "\n- **Apa itu KTVDI?** KTVDI adalah platform komunitas online tempat pengguna dapat berbagi, menambahkan, memperbarui, dan melihat data siaran TV Digital (DVB-T2) di various provinsi dan wilayah di Indonesia."
+            "\n- **Apa itu KTVDI?** KTVDI adalah platform komunitas online tempat pengguna dapat berbagi, menambahkan, memperbarui, dan melihat data siaran TV Digital (DVB-T2) di berbagai provinsi dan wilayah di Indonesia."
             "\n- **Bagaimana cara menambahkan data siaran?** Anda perlu login ke akun KTVDI Anda. Setelah login, Anda akan melihat bagian 'Tambahkan Data Siaran Baru' di halaman utama. Isi detail provinsi, wilayah, penyelenggara MUX, dan daftar siaran yang tersedia."
             "\n- **Bagaimana cara mendapatkan poin?** Anda mendapatkan 10 poin setiap kali Anda berhasil menambahkan data siaran baru. Anda mendapatkan 5 poin saat memperbarui data siaran yang sudah ada. Anda juga mendapatkan 1 poin setiap kali Anda mengirimkan komentar pada data MUX tertentu."
             "\n- **Apa itu MUX?** MUX adalah singkatan dari Multiplex. Dalam konteks TV Digital, MUX adalah teknologi yang memungkinkan beberapa saluran televisi digital disiarkan secara bersamaan melalui satu frekuensi atau kanal UHF. Setiap MUX biasanya dikelola oleh satu penyelenggara (misalnya, Metro TV, SCTV, Trans TV, TVRI)."
@@ -633,29 +620,22 @@ def display_chatbot_page(): # **PENAMBAHAN FUNGSI HALAMAN CHATBOT**
         )
     )
 
-    # Tampilkan pesan chat dari riwayat saat aplikasi dijalankan ulang
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # Reaksi terhadap input pengguna
     if prompt := st.chat_input("Tanyakan sesuatu tentang KTVDI atau TV Digital..."):
-        # Tampilkan pesan pengguna di kontainer pesan chat
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Tampilkan respons asisten di kontainer pesan chat
         with st.spinner("Mencari jawaban..."):
             try:
-                # Siapkan riwayat chat untuk Gemini (berbasis giliran)
-                # Jangan masukkan prompt saat ini ke riwayat yang diberikan ke start_chat
                 chat_history_for_gemini = [
                     {"role": "user" if msg["role"] == "user" else "model", "parts": [msg["content"]]}
-                    for msg in st.session_state.messages[:-1] # Semua pesan kecuali yang terakhir (prompt saat ini)
+                    for msg in st.session_state.messages[:-1]
                 ]
 
-                # Mulai chat dengan model
                 chat = model.start_chat(history=chat_history_for_gemini)
                 response = chat.send_message(prompt)
 
@@ -671,10 +651,38 @@ def display_chatbot_page(): # **PENAMBAHAN FUNGSI HALAMAN CHATBOT**
         switch_page("beranda")
         st.rerun()
 
+def display_sidebar(): # Definisi fungsi sidebar harus di sini, sebelum dipanggil
+    """Menampilkan sidebar untuk pengguna yang sudah login."""
+    if st.session_state.login:
+        users = db.reference("users").get() or {}
+        user_data = users.get(st.session_state.username, {})
+        nama_pengguna = user_data.get("nama", st.session_state.username)
+        user_points = user_data.get("points", 0)
+
+        st.sidebar.title(f"Hai, {nama_pengguna}!")
+        st.sidebar.markdown(f"**Poin Anda:** {user_points} ⭐")
+        st.sidebar.markdown("---")
+
+        if st.sidebar.button("👤 Profil Saya"):
+            st.session_state.selected_other_user = None
+            switch_page("profile")
+            st.rerun()
+        if st.sidebar.button("👥 Lihat Profil Pengguna Lain"):
+            switch_page("other_users")
+            st.rerun()
+        if st.sidebar.button("🏆 Leaderboard"):
+            switch_page("leaderboard")
+            st.rerun()
+        if st.sidebar.button("🤖 FAQ Chatbot"):
+            switch_page("chatbot")
+            st.rerun()
+        st.sidebar.button("🚪 Logout", on_click=proses_logout)
+
+
 # --- ROUTING HALAMAN UTAMA APLIKASI ---
 
 st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
-display_sidebar()
+display_sidebar() # Sekarang fungsi ini sudah didefinisikan
 
 if st.session_state.halaman == "beranda":
     st.header("Data Siaran TV Digital Terestrial (DVB-T2) Indonesia")
@@ -713,7 +721,6 @@ if st.session_state.halaman == "beranda":
                             if mux_details.get("catatan"):
                                 st.write(f"Catatan: {mux_details['catatan']}")
 
-                            # Tombol Edit dan Hapus hanya untuk pemilik data
                             if st.session_state.login and st.session_state.username == mux_details.get("ditambahkan_oleh"):
                                 col1, col2 = st.columns(2)
                                 with col1:
@@ -732,14 +739,12 @@ if st.session_state.halaman == "beranda":
                                         if st.warning("Apakah Anda yakin ingin menghapus data ini?"):
                                             try:
                                                 db.reference(f"mux/{provinsi_pilihan}/{wilayah_nama}/{mux_key}").delete()
-                                                # Hapus juga komentarnya jika ada
                                                 db.reference(f"comments/{provinsi_pilihan}/{wilayah_nama}/{mux_key}").delete()
                                                 st.success("Data berhasil dihapus!")
                                                 st.experimental_rerun()
                                             except Exception as e:
                                                 st.error(f"Gagal menghapus data: {e}")
                             
-                            # Bagian Komentar
                             st.markdown("##### Komentar")
                             comments = get_comment_data(provinsi_pilihan, wilayah_nama, mux_key)
                             if comments:
@@ -762,7 +767,7 @@ if st.session_state.halaman == "beranda":
                                                     "timestamp": datetime.now(WIB).isoformat()
                                                 }
                                                 db.reference(f"comments/{provinsi_pilihan}/{wilayah_nama}/{mux_key}").push(comment_data)
-                                                add_user_points(st.session_state.username, 1) # 1 poin untuk komentar
+                                                add_user_points(st.session_state.username, 1)
                                                 st.session_state.comment_success_message = "Komentar berhasil ditambahkan!"
                                                 st.rerun()
                                             except Exception as e:
@@ -771,7 +776,7 @@ if st.session_state.halaman == "beranda":
                                             st.warning("Komentar tidak boleh kosong.")
                                 if st.session_state.comment_success_message:
                                     st.success(st.session_state.comment_success_message)
-                                    st.session_state.comment_success_message = "" # Bersihkan pesan setelah ditampilkan
+                                    st.session_state.comment_success_message = ""
                             else:
                                 st.info("Login untuk memberikan komentar.")
                             st.markdown("---")
@@ -806,7 +811,7 @@ elif st.session_state.halaman == "login":
         display_forgot_password_form(users)
     elif st.session_state.mode == "Login":
         display_login_form(users)
-    else: # Daftar Akun
+    else:
         display_registration_form(users)
 
     if st.button("⬅️ Kembali ke Beranda"):
@@ -829,5 +834,5 @@ elif st.session_state.halaman == "other_users":
 elif st.session_state.halaman == "leaderboard":
     display_leaderboard_page()
 
-elif st.session_state.halaman == "chatbot": # **PENAMBAHAN KONDISI ROUTING BARU**
+elif st.session_state.halaman == "chatbot":
     display_chatbot_page()

@@ -867,7 +867,7 @@ def display_chatbot_page():
     model = genai.GenerativeModel(
         model_name="gemini-2.5-flash",
         system_instruction=(
-            "Anda adalah Chatbot FAQ untuk website Komunitas TV Digital Indonesia (KTVDI). "
+            "Anda adalah Chatbot AI KTVDI untuk website Komunitas TV Digital Indonesia (KTVDI). "
             "Tugas Anda adalah menjawab pertanyaan pengguna seputar aplikasi KTVDI, "
             "fungsi-fungsinya (login, daftar, tambah data, edit data, hapus data, poin, leaderboard, profil, komentar), "
             "serta pertanyaan umum tentang TV Digital di Indonesia (DVB-T2, MUX, mencari siaran, antena, STB, merk TV). "
@@ -936,7 +936,7 @@ def display_chatbot_page():
 
 # --- ROUTING HALAMAN UTAMA APLIKASI ---
 
-st.title("🇮🇩 KOMUNITAS TV DDIGITAL INDONESIA 🇮🇩")
+st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
 display_sidebar()
 
 if st.session_state.halaman == "beranda":

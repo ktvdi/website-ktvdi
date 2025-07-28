@@ -2,3 +2,5 @@ streamlit
 fpdf
 firebase-admin
 Pillow
+pandas
+google-generativeai

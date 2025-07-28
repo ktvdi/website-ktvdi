@@ -864,7 +864,7 @@ def display_chatbot_page():
 
     # Inisialisasi model generatif dengan instruksi sistem (pengetahuan dasar FAQ)
     model = genai.GenerativeModel(
-        model_name="gemini-pro",
+        model_name="gemini-1.5-flash",
         system_instruction=(
             "Anda adalah Chatbot FAQ untuk website Komunitas TV Digital Indonesia (KTVDI). "
             "Tugas Anda adalah menjawab pertanyaan pengguna seputar aplikasi KTVDI, "

@@ -119,6 +119,7 @@ def proses_logout():
     st.session_state.login = False
     st.session_state.username = ""
     st.session_state.selected_other_user = None
+    st.session_state.messages = []
     switch_page("beranda")
 
 # --- FUNGSI UNTUK MERENDER KOMPONEN UI ---

@@ -692,7 +692,7 @@ if st.session_state.halaman == "beranda":
     if provinsi_data:
         provinsi_pilihan = st.selectbox(
             "Pilih Provinsi",
-            ["Pilih Provinsi"] + sorted(list(provinsi_data.keys()))
+            ["Pilih Provinsi"] + sorted(list(provinsi_data.values()))
         )
 
         if provinsi_pilihan != "Pilih Provinsi":

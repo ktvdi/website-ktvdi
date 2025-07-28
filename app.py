@@ -146,7 +146,7 @@ def display_sidebar():
         if st.sidebar.button("🏆 Leaderboard"):
             switch_page("leaderboard")
             st.rerun()
-        if st.sidebar.button("🤖 FAQ Chatbot"):
+        if st.sidebar.button("🤖 Chatbot KTVDI"):
             switch_page("chatbot")
             st.rerun()
         st.sidebar.button("🚪 Logout", on_click=proses_logout)

@@ -77,6 +77,17 @@ initialize_firebase()
 initialize_session_state()
 WIB = timezone("Asia/Jakarta")
 
+def switch_page(page_name):
+    """Fungsi untuk berpindah halaman."""
+    st.session_state.halaman = page_name
+
+def proses_logout():
+    """Membersihkan session state saat logout."""
+    st.session_state.login = False
+    st.session_state.username = ""
+    st.session_state.selected_other_user = None
+    switch_page("beranda")
+
 # --- FUNGSI HELPER ---
 # ... (fungsi-fungsi helper seperti hash_password, generate_otp, send_otp_email, switch_page, proses_logout tetap sama) ...
 

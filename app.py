@@ -71,7 +71,7 @@ initialize_session_state()
 initialize_gemini()
 WIB = timezone("Asia/Jakarta")
 
-# --- FUNGSI HELPER UMUM ---
+# --- FUNGSI HELPER UMUM (DEFINED SEBELUM DIGUNAKAN) ---
 
 def hash_password(password):
     """Menghash password menggunakan SHA256."""
@@ -100,7 +100,7 @@ def send_otp_email(email, otp_code):
         st.error(f"Gagal mengirim OTP. Pastikan email dan password pengirim benar, dan akses aplikasi pihak ketiga di akun Google Anda diizinkan: {e}")
         return False
 
-def switch_page(page_name):
+def switch_page(page_name): # PENTING: Fungsi ini didefinisikan di sini
     """Mengganti halaman aplikasi."""
     st.session_state.halaman = page_name
 
@@ -174,7 +174,7 @@ def add_user_points(username, points_to_add):
     except Exception as e:
         st.warning(f"Gagal menambahkan poin untuk {username}: {e}")
 
-# --- FUNGSI TAMPILAN HALAMAN ---
+# --- FUNGSI TAMPILAN HALAMAN (DEFINED SEBELUM DIGUNAKAN DI ROUTING UTAMA) ---
 
 def display_login_form(users):
     """Menampilkan form login."""
@@ -588,7 +588,6 @@ def display_chatbot_page():
     st.header("🤖 FAQ Chatbot KTVDI")
     st.info("Ajukan pertanyaan seputar KTVDI, TV Digital, atau siaran MUX. Saya akan bantu menjawab!")
 
-    # Inisialisasi model generatif dengan instruksi sistem (pengetahuan dasar FAQ)
     model = genai.GenerativeModel(
         model_name="gemini-pro",
         system_instruction=(

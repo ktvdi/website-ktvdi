@@ -110,6 +110,114 @@ def send_otp_email(receiver_email, otp, purpose="reset"):
         st.error(f"Gagal mengirim email: {e}")
         return False
 
+def is_admin(username=None):
+    """Memeriksa peran admin dari Firebase: admins/{username} = true."""
+    username = username or st.session_state.get("username", "")
+    if not username:
+        return False
+    return db.reference(f"admins/{username}").get() is True
+
+def write_audit_log(action, provinsi, wilayah, mux, before=None, after=None):
+    """Mencatat perubahan data siaran untuk riwayat/audit."""
+    try:
+        username = st.session_state.get("username", "system")
+        user_data = db.reference(f"users/{username}").get() or {}
+        now = datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
+        db.reference("audit_logs").push().set({
+            "action": action,
+            "provinsi": provinsi,
+            "wilayah": wilayah,
+            "mux": mux,
+            "username": username,
+            "nama": user_data.get("nama", username),
+            "timestamp": now,
+            "before": before,
+            "after": after
+        })
+    except Exception as exc:
+        st.warning(f"Perubahan tersimpan, tetapi log audit gagal dicatat: {exc}")
+
+def display_report_page():
+    """Form laporan koreksi data siaran dari komunitas."""
+    st.header("🚩 Laporkan Kesalahan Data Siaran")
+    all_data = db.reference("siaran").get() or {}
+    options = []
+    for prov, wilayah_data in all_data.items():
+        for wilayah, mux_data in (wilayah_data or {}).items():
+            for mux in (mux_data or {}).keys():
+                options.append((prov, wilayah, mux))
+    if not options:
+        st.info("Belum ada data siaran yang dapat dilaporkan.")
+        return
+    labels = [f"{p} / {w} / {m}" for p, w, m in options]
+    with st.form("report_broadcast_form", clear_on_submit=True):
+        selected = st.selectbox("Pilih data yang bermasalah", range(len(options)), format_func=lambda i: labels[i])
+        category = st.selectbox("Jenis kesalahan", [
+            "Nama kanal salah", "Kanal sudah tidak bersiaran", "MUX/frekuensi salah",
+            "Wilayah layanan salah", "Data tidak lengkap", "Lainnya"
+        ])
+        description = st.text_area("Keterangan / usulan koreksi", placeholder="Jelaskan informasi yang perlu diperbaiki...")
+        submitted = st.form_submit_button("Kirim Laporan")
+    if submitted:
+        if not description.strip():
+            st.warning("Mohon isi keterangan laporan.")
+        else:
+            prov, wilayah, mux = options[selected]
+            username = st.session_state.get("username", "anonim")
+            user_data = db.reference(f"users/{username}").get() or {}
+            db.reference("broadcast_reports").push().set({
+                "provinsi": prov, "wilayah": wilayah, "mux": mux,
+                "category": category, "description": description.strip(),
+                "reporter_username": username,
+                "reporter_name": user_data.get("nama", username),
+                "status": "Menunggu", "created_at": datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
+            })
+            st.success("Laporan berhasil dikirim. Terima kasih membantu menjaga keakuratan data!")
+
+def display_admin_dashboard():
+    """Dashboard admin untuk meninjau laporan dan riwayat perubahan."""
+    if not st.session_state.get("login") or not is_admin():
+        st.error("Halaman ini hanya dapat diakses oleh admin.")
+        return
+    st.header("🛠️ Dashboard Admin")
+    reports = db.reference("broadcast_reports").get() or {}
+    pending = {k: v for k, v in reports.items() if v.get("status", "Menunggu") == "Menunggu"}
+    st.metric("Laporan menunggu", len(pending))
+    if pending:
+        st.subheader("Laporan Kesalahan Data")
+        for report_id, report in pending.items():
+            with st.expander(f"{report.get('provinsi')} / {report.get('wilayah')} / {report.get('mux')} — {report.get('category')}"):
+                st.write(report.get("description", ""))
+                st.caption(f"Oleh {report.get('reporter_name', report.get('reporter_username', ''))} • {report.get('created_at', '')}")
+                if st.button("Tandai selesai", key=f"resolve_report_{report_id}"):
+                    db.reference(f"broadcast_reports/{report_id}").update({
+                        "status": "Selesai",
+                        "resolved_by": st.session_state.username,
+                        "resolved_at": datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
+                    })
+                    write_audit_log("resolve_report", report.get("provinsi", ""), report.get("wilayah", ""), report.get("mux", ""), before=report, after={"status": "Selesai"})
+                    st.rerun()
+    else:
+        st.info("Tidak ada laporan yang menunggu ditinjau.")
+    st.subheader("Semua Laporan")
+    if reports:
+        report_rows = []
+        for rid, r in reports.items():
+            report_rows.append({"Status": r.get("status", "Menunggu"), "Provinsi": r.get("provinsi"), "Wilayah": r.get("wilayah"), "MUX": r.get("mux"), "Jenis": r.get("category"), "Pelapor": r.get("reporter_name"), "Waktu": r.get("created_at"), "Keterangan": r.get("description")})
+        st.dataframe(pd.DataFrame(report_rows), use_container_width=True, hide_index=True)
+    st.subheader("🧾 Riwayat Perubahan (Audit Log)")
+    logs = db.reference("audit_logs").get() or {}
+    if logs:
+        rows = []
+        for log in sorted(logs.values(), key=lambda x: x.get("timestamp", ""), reverse=True):
+            rows.append({"Waktu": log.get("timestamp"), "Aksi": log.get("action"), "Pengguna": log.get("nama", log.get("username")), "Provinsi": log.get("provinsi"), "Wilayah": log.get("wilayah"), "MUX": log.get("mux")})
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        with st.expander("Lihat detail perubahan"):
+            for log_id, log in sorted(logs.items(), key=lambda item: item[1].get("timestamp", ""), reverse=True):
+                st.json(log)
+    else:
+        st.info("Belum ada riwayat perubahan.")
+
 def switch_page(page_name):
     """Fungsi untuk berpindah halaman."""
     st.session_state.halaman = page_name
@@ -148,6 +256,12 @@ def display_sidebar():
             st.rerun()
         if st.sidebar.button("🤖 Chatbot KTVDI"):
             switch_page("chatbot")
+            st.rerun()
+        if st.sidebar.button("🚩 Laporkan Kesalahan Data"):
+            switch_page("report_data")
+            st.rerun()
+        if is_admin() and st.sidebar.button("🛠️ Dashboard Admin"):
+            switch_page("admin")
             st.rerun()
         st.sidebar.button("🚪 Logout", on_click=proses_logout)
 
@@ -394,6 +508,7 @@ def display_add_data_form():
                         }
                         
                         db.reference(f"siaran/{provinsi}/{wilayah_clean}/{mux_clean}").set(data_to_save)
+                        write_audit_log("add_broadcast", provinsi, wilayah_clean, mux_clean, before=None, after=data_to_save)
                         st.success("Data berhasil disimpan!")
                         st.balloons()
                         
@@ -448,6 +563,7 @@ def handle_edit_delete_actions(provinsi, wilayah, mux_key, mux_details_full, cur
         if st.button(f"🗑️ Hapus {mux_key}", key=f"delete_{provinsi}_{wilayah}_{mux_key}"):
             try:
                 db.reference(f"siaran/{provinsi}/{wilayah}/{mux_key}").delete()
+                write_audit_log("delete_broadcast", provinsi, wilayah, mux_key, before=mux_details_full, after=None)
                 st.success(f"Data {mux_key} berhasil dihapus!")
                 time.sleep(2)
                 st.rerun()
@@ -1043,6 +1159,12 @@ elif st.session_state.halaman == "login":
     if st.button("⬅️ Kembali ke Beranda"):
         switch_page("beranda")
         st.rerun()
+
+elif st.session_state.halaman == "report_data":
+    display_report_page()
+
+elif st.session_state.halaman == "admin":
+    display_admin_dashboard()
 
 elif st.session_state.halaman == "edit_data":
     if not st.session_state.login:

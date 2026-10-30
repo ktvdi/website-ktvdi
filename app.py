@@ -523,43 +523,60 @@ def proses_logout():
 # --- FUNGSI UNTUK MERENDER KOMPONEN UI ---
 
 def display_sidebar():
-    """Menampilkan sidebar untuk pengguna yang sudah login."""
-    if st.session_state.login:
+    """Menampilkan navigasi utama dalam dropdown hamburger."""
+    logged_in = bool(st.session_state.get("login"))
+
+    # Identitas pengguna ditampilkan ringkas di area navigasi.
+    if logged_in:
         users = db.reference("users").get() or {}
         user_data = users.get(st.session_state.username, {})
         nama_pengguna = user_data.get("nama", st.session_state.username)
         user_points = user_data.get("points", 0)
+        st.caption(f"👤 {nama_pengguna}  •  ⭐ {user_points} poin")
+    else:
+        st.caption("Selamat datang di Komunitas TV Digital Indonesia")
 
-        st.sidebar.title(f"Hai, {nama_pengguna}!")
-        st.sidebar.markdown(f"**Poin Anda:** {user_points} ⭐")
-        st.sidebar.markdown("---")
+    # Dropdown hamburger sebagai pengganti sidebar.
+    with st.popover("☰ Menu Navigasi", use_container_width=True):
+        st.markdown("### Navigasi KTVDI")
 
-        if st.sidebar.button("👤 Profil Saya"):
-            st.session_state.selected_other_user = None
-            switch_page("profile")
-            st.rerun()
-        if st.sidebar.button("👥 Lihat Profil Pengguna Lain"):
-            switch_page("other_users")
-            st.rerun()
-        if st.sidebar.button("🏆 Leaderboard"):
-            switch_page("leaderboard")
-            st.rerun()
-        if st.sidebar.button("🤖 Chatbot KTVDI"):
-            switch_page("chatbot")
-            st.rerun()
-        if st.sidebar.button("🚩 Laporkan Kesalahan Data"):
-            switch_page("report_data")
-            st.rerun()
-        if st.sidebar.button("🔔 Notifikasi Siaran"):
-            switch_page("notifications")
-            st.rerun()
-        if st.sidebar.button("🗺️ Peta Pemancar"):
-            switch_page("map")
-            st.rerun()
-        if is_admin() and st.sidebar.button("🛠️ Dashboard Admin"):
-            switch_page("admin")
-            st.rerun()
-        st.sidebar.button("🚪 Logout", on_click=proses_logout)
+        menu_items = [
+            ("🏠 Beranda", "beranda"),
+            ("🔎 Pencarian Global", "search"),
+            ("📊 Statistik TV Digital", "statistics"),
+            ("🗺️ Peta Pemancar", "map"),
+            ("🔔 Notifikasi Siaran", "notifications"),
+        ]
+
+        if logged_in:
+            menu_items.extend([
+                ("👤 Profil Saya", "profile"),
+                ("👥 Lihat Profil Pengguna Lain", "other_users"),
+                ("🏆 Leaderboard", "leaderboard"),
+                ("🤖 Chatbot KTVDI", "chatbot"),
+                ("🚩 Laporkan Kesalahan Data", "report_data"),
+            ])
+            if is_admin():
+                menu_items.append(("🛠️ Dashboard Admin", "admin"))
+        else:
+            menu_items.append(("🔐 Login / Daftar Akun", "login"))
+
+        for label, page in menu_items:
+            if st.button(label, key=f"nav_menu_{page}", use_container_width=True):
+                if page == "profile":
+                    st.session_state.selected_other_user = None
+                switch_page(page)
+                st.rerun()
+
+        if logged_in:
+            st.divider()
+            st.button(
+                "🚪 Logout",
+                key="nav_menu_logout",
+                on_click=proses_logout,
+                use_container_width=True,
+            )
+
 
 def display_login_form(users):
     """Menampilkan form untuk login."""
@@ -1353,15 +1370,7 @@ def display_chatbot_page():
 
 st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
 
-# Akses Login/Daftar ditempatkan tepat di bawah judul utama.
-if not st.session_state.login:
-    top_login_col, _ = st.columns([1, 3])
-    if top_login_col.button("🔐 Login / Daftar Akun", key="top_login_register"):
-        switch_page("login")
-        st.rerun()
-else:
-    st.caption(f"👤 Login sebagai **{st.session_state.username}**")
-
+# Navigasi utama menggunakan dropdown hamburger.
 display_sidebar()
 
 if st.session_state.halaman == "beranda":

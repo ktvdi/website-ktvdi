@@ -14,7 +14,7 @@ from datetime import datetime
 
 # --- KONFIGURASI DAN INISIALISASI ---
 
-st.set_page_config(page_title="KTVDI", page_icon="🇮🇩")
+st.set_page_config(page_title="KTVDI", page_icon="🇮🇩", layout="wide", initial_sidebar_state="collapsed")
 
 def initialize_firebase():
     """Menginisialisasi koneksi ke Firebase Realtime Database."""
@@ -523,59 +523,106 @@ def proses_logout():
 # --- FUNGSI UNTUK MERENDER KOMPONEN UI ---
 
 def display_sidebar():
-    """Menampilkan navigasi utama dalam dropdown hamburger."""
-    logged_in = bool(st.session_state.get("login"))
+    """Navbar modern dengan dropdown hamburger; sidebar Streamlit disembunyikan."""
+    st.markdown("""
+    <style>
+      /* Hilangkan navigasi/sidebar bawaan Streamlit */
+      [data-testid="stSidebar"], [data-testid="stSidebarNav"],
+      [data-testid="collapsedControl"] {display: none !important;}
+      [data-testid="stAppViewContainer"] > .main {padding-top: 0.6rem;}
+      .block-container {padding-top: 1.2rem; max-width: 1440px;}
+      /* Header navigasi bergaya website */
+      .ktvdi-navbar {
+        display:flex; align-items:center; justify-content:space-between;
+        gap:16px; padding:14px 20px; margin:0 0 22px 0;
+        border:1px solid rgba(128,128,128,.22); border-radius:16px;
+        background:var(--secondary-background-color);
+        box-shadow:0 5px 18px rgba(0,0,0,.06);
+      }
+      .ktvdi-brand {display:flex; align-items:center; gap:12px; min-width:0;}
+      .ktvdi-logo {font-size:28px; line-height:1;}
+      .ktvdi-brand-title {font-size:18px; font-weight:750; letter-spacing:.2px;}
+      .ktvdi-brand-sub {font-size:12px; opacity:.68; margin-top:2px;}
+      [data-testid="stPopover"] > button {
+        border-radius:11px !important; border:1px solid rgba(128,128,128,.35) !important;
+        font-weight:650 !important; min-height:42px !important;
+        padding:0 16px !important; background:var(--background-color) !important;
+      }
+      [data-testid="stPopoverBody"] {
+        min-width:275px !important; padding:14px !important;
+        border-radius:14px !important; border:1px solid rgba(128,128,128,.25) !important;
+        box-shadow:0 12px 35px rgba(0,0,0,.16) !important;
+      }
+      [data-testid="stPopoverBody"] [data-testid="stBaseButton-secondary"] {
+        text-align:left !important; justify-content:flex-start !important;
+        border:0 !important; border-radius:9px !important; min-height:40px !important;
+      }
+      [data-testid="stPopoverBody"] [data-testid="stBaseButton-secondary"]:hover {
+        background:rgba(128,128,128,.13) !important;
+      }
+      @media (max-width:640px) {
+        .ktvdi-navbar {padding:11px 12px; border-radius:12px;}
+        .ktvdi-brand-title {font-size:14px;}
+        .ktvdi-brand-sub {font-size:10px;}
+        [data-testid="stPopover"] > button {padding:0 11px !important;}
+      }
+    </style>
+    """, unsafe_allow_html=True)
 
-    # Identitas pengguna ditampilkan ringkas di area navigasi.
+    logged_in = bool(st.session_state.get("login"))
     if logged_in:
         users = db.reference("users").get() or {}
         user_data = users.get(st.session_state.username, {})
         nama_pengguna = user_data.get("nama", st.session_state.username)
         user_points = user_data.get("points", 0)
-        st.caption(f"👤 {nama_pengguna}  •  ⭐ {user_points} poin")
+        user_label = f"👤 {nama_pengguna} · ⭐ {user_points} poin"
     else:
-        st.caption("Selamat datang di Komunitas TV Digital Indonesia")
+        user_label = "Komunitas TV Digital Indonesia"
 
-    # Dropdown hamburger sebagai pengganti sidebar.
-    with st.popover("☰ Menu Navigasi", use_container_width=True):
-        st.markdown("### Navigasi KTVDI")
+    brand_col, menu_col = st.columns([5, 1.35], vertical_alignment="center")
+    with brand_col:
+        st.markdown(
+            '<div class="ktvdi-brand"><div class="ktvdi-logo">🇮🇩</div>'
+            '<div><div class="ktvdi-brand-title">KOMUNITAS TV DIGITAL INDONESIA</div>'
+            f'<div class="ktvdi-brand-sub">{user_label}</div></div></div>',
+            unsafe_allow_html=True,
+        )
+    with menu_col:
+        with st.popover("☰  Menu", use_container_width=True):
+            st.markdown("#### Navigasi")
+            menu_items = [
+                ("🏠  Beranda", "beranda"),
+                ("🔎  Pencarian Global", "search"),
+                ("📊  Statistik TV Digital", "statistics"),
+                ("🗺️  Peta Pemancar", "map"),
+                ("🔔  Notifikasi Siaran", "notifications"),
+            ]
+            if logged_in:
+                menu_items.extend([
+                    ("👤  Profil Saya", "profile"),
+                    ("👥  Profil Pengguna Lain", "other_users"),
+                    ("🏆  Leaderboard", "leaderboard"),
+                    ("🤖  Chatbot KTVDI", "chatbot"),
+                    ("🚩  Laporkan Kesalahan Data", "report_data"),
+                ])
+                if is_admin():
+                    menu_items.append(("🛠️  Dashboard Admin", "admin"))
+            else:
+                menu_items.append(("🔐  Login / Daftar Akun", "login"))
 
-        menu_items = [
-            ("🏠 Beranda", "beranda"),
-            ("🔎 Pencarian Global", "search"),
-            ("📊 Statistik TV Digital", "statistics"),
-            ("🗺️ Peta Pemancar", "map"),
-            ("🔔 Notifikasi Siaran", "notifications"),
-        ]
+            for label, page in menu_items:
+                if st.button(label, key=f"nav_menu_{page}", use_container_width=True):
+                    if page == "profile":
+                        st.session_state.selected_other_user = None
+                    switch_page(page)
+                    st.rerun()
 
-        if logged_in:
-            menu_items.extend([
-                ("👤 Profil Saya", "profile"),
-                ("👥 Lihat Profil Pengguna Lain", "other_users"),
-                ("🏆 Leaderboard", "leaderboard"),
-                ("🤖 Chatbot KTVDI", "chatbot"),
-                ("🚩 Laporkan Kesalahan Data", "report_data"),
-            ])
-            if is_admin():
-                menu_items.append(("🛠️ Dashboard Admin", "admin"))
-        else:
-            menu_items.append(("🔐 Login / Daftar Akun", "login"))
-
-        for label, page in menu_items:
-            if st.button(label, key=f"nav_menu_{page}", use_container_width=True):
-                if page == "profile":
-                    st.session_state.selected_other_user = None
-                switch_page(page)
-                st.rerun()
-
-        if logged_in:
-            st.divider()
-            st.button(
-                "🚪 Logout",
-                key="nav_menu_logout",
-                on_click=proses_logout,
-                use_container_width=True,
-            )
+            if logged_in:
+                st.divider()
+                st.button(
+                    "🚪  Logout", key="nav_menu_logout",
+                    on_click=proses_logout, use_container_width=True,
+                )
 
 
 def display_login_form(users):
@@ -1368,9 +1415,7 @@ def display_chatbot_page():
 
 # --- ROUTING HALAMAN UTAMA APLIKASI ---
 
-st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
-
-# Navigasi utama menggunakan dropdown hamburger.
+# Navbar website dengan dropdown hamburger (tanpa sidebar Streamlit).
 display_sidebar()
 
 if st.session_state.halaman == "beranda":

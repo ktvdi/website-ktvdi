@@ -156,7 +156,8 @@ def display_report_page():
             "Nama kanal salah", "Kanal sudah tidak bersiaran", "MUX/frekuensi salah",
             "Wilayah layanan salah", "Data tidak lengkap", "Lainnya"
         ])
-        description = st.text_area("Keterangan / usulan koreksi", placeholder="Jelaskan informasi yang perlu diperbaiki...")
+        description = st.text_area("Keterangan / usulan koreksi", placeholder="Jelaskan informasi yang perlu diperbaiki...", max_chars=1500)
+        evidence = st.text_input("Tautan bukti (opsional)", placeholder="https://...")
         submitted = st.form_submit_button("Kirim Laporan")
     if submitted:
         if not description.strip():
@@ -168,9 +169,10 @@ def display_report_page():
             db.reference("broadcast_reports").push().set({
                 "provinsi": prov, "wilayah": wilayah, "mux": mux,
                 "category": category, "description": description.strip(),
+                "evidence_url": evidence.strip(),
                 "reporter_username": username,
                 "reporter_name": user_data.get("nama", username),
-                "status": "Menunggu", "created_at": datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
+                "status": "Menunggu", "admin_note": "", "created_at": datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
             })
             st.success("Laporan berhasil dikirim. Terima kasih membantu menjaga keakuratan data!")
 
@@ -188,14 +190,18 @@ def display_admin_dashboard():
         for report_id, report in pending.items():
             with st.expander(f"{report.get('provinsi')} / {report.get('wilayah')} / {report.get('mux')} — {report.get('category')}"):
                 st.write(report.get("description", ""))
+                if report.get("evidence_url", "").startswith(("https://", "http://")):
+                    st.markdown(f"[Buka bukti]({report.get('evidence_url')})")
                 st.caption(f"Oleh {report.get('reporter_name', report.get('reporter_username', ''))} • {report.get('created_at', '')}")
-                if st.button("Tandai selesai", key=f"resolve_report_{report_id}"):
+                admin_note = st.text_input("Catatan admin", value=report.get("admin_note", ""), key=f"report_note_{report_id}")
+                status_choice = st.selectbox("Status laporan", ["Menunggu", "Sedang ditinjau", "Selesai", "Ditolak"], index=["Menunggu", "Sedang ditinjau", "Selesai", "Ditolak"].index(report.get("status", "Menunggu")) if report.get("status", "Menunggu") in ["Menunggu", "Sedang ditinjau", "Selesai", "Ditolak"] else 0, key=f"report_status_{report_id}")
+                if st.button("Simpan status/catatan", key=f"resolve_report_{report_id}"):
                     db.reference(f"broadcast_reports/{report_id}").update({
-                        "status": "Selesai",
+                        "status": status_choice, "admin_note": admin_note.strip(),
                         "resolved_by": st.session_state.username,
                         "resolved_at": datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
                     })
-                    write_audit_log("resolve_report", report.get("provinsi", ""), report.get("wilayah", ""), report.get("mux", ""), before=report, after={"status": "Selesai"})
+                    write_audit_log("update_report_status", report.get("provinsi", ""), report.get("wilayah", ""), report.get("mux", ""), before=report, after={"status": status_choice, "admin_note": admin_note.strip()})
                     st.rerun()
     else:
         st.info("Tidak ada laporan yang menunggu ditinjau.")
@@ -217,6 +223,155 @@ def display_admin_dashboard():
                 st.json(log)
     else:
         st.info("Belum ada riwayat perubahan.")
+    display_restore_history()
+
+def get_all_broadcast_rows():
+    """Flatten data siaran untuk pencarian, statistik, dan peta."""
+    all_data = db.reference("siaran").get() or {}
+    rows = []
+    for prov, areas in (all_data or {}).items():
+        for wilayah, muxes in (areas or {}).items():
+            for mux, details in (muxes or {}).items():
+                if isinstance(details, list):
+                    details = {"siaran": details}
+                details = details or {}
+                channels = details.get("siaran", []) or []
+                rows.append({"provinsi": prov, "wilayah": wilayah, "mux": mux,
+                             "siaran": channels, "detail": details,
+                             "latitude": details.get("latitude"), "longitude": details.get("longitude")})
+    return rows
+
+
+def display_global_search():
+    if st.button("⬅️ Kembali ke Beranda", key="back_global_search"):
+        switch_page("beranda"); st.rerun()
+    st.header("🔎 Pencarian Siaran Global")
+    query = st.text_input("Cari kanal, MUX, wilayah, atau provinsi", placeholder="Contoh: TVRI, UHF 27, Jawa Barat").strip().casefold()
+    rows = get_all_broadcast_rows()
+    if not query:
+        st.caption(f"Tersedia {sum(len(r['siaran']) for r in rows)} kanal pada {len(rows)} MUX. Masukkan kata kunci untuk mencari.")
+        return
+    matches = []
+    for r in rows:
+        searchable = " ".join([r["provinsi"], r["wilayah"], r["mux"], " ".join(map(str, r["siaran"]))]).casefold()
+        if query in searchable:
+            matches.append(r)
+    st.write(f"Ditemukan **{len(matches)}** MUX yang cocok.")
+    if not matches:
+        st.info("Tidak ada hasil. Coba kata kunci lain.")
+    for r in matches:
+        with st.expander(f"📡 {r['mux']} — {r['wilayah']}, {r['provinsi']}"):
+            st.write("**Daftar kanal:** " + (", ".join(map(str, r["siaran"])) if r["siaran"] else "Belum tersedia"))
+            st.caption(f"Pembaruan terakhir: {r['detail'].get('last_updated_date', 'N/A')} {r['detail'].get('last_updated_time', '')}")
+
+
+def display_digital_statistics():
+    """Statistik publik, tidak memerlukan login."""
+    if st.button("⬅️ Kembali ke Beranda", key="back_digital_stats"):
+        switch_page("beranda"); st.rerun()
+    st.header("📊 Statistik TV Digital Indonesia")
+    rows = get_all_broadcast_rows()
+    provinces = {r["provinsi"] for r in rows}
+    areas = {(r["provinsi"], r["wilayah"]) for r in rows}
+    channels = {str(c).strip().casefold() for r in rows for c in r["siaran"] if str(c).strip()}
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Provinsi dengan data", len(provinces))
+    c2.metric("Wilayah layanan", len(areas))
+    c3.metric("MUX terdata", len(rows))
+    c4.metric("Nama kanal unik", len(channels))
+    if rows:
+        df = pd.DataFrame([{"Provinsi": r["provinsi"], "Wilayah": r["wilayah"], "MUX": r["mux"], "Jumlah kanal": len(r["siaran"])} for r in rows])
+        st.subheader("MUX dan kanal per provinsi")
+        summary = df.groupby("Provinsi", as_index=False).agg({"MUX": "count", "Jumlah kanal": "sum"}).sort_values("MUX", ascending=False)
+        st.bar_chart(summary.set_index("Provinsi")["MUX"])
+        st.dataframe(summary, use_container_width=True, hide_index=True)
+    else:
+        st.info("Belum ada data siaran untuk dihitung.")
+
+
+def display_notifications():
+    if st.button("⬅️ Kembali ke Beranda", key="back_notifications"):
+        switch_page("beranda"); st.rerun()
+    st.header("🔔 Perubahan Data Siaran Terbaru")
+    logs = db.reference("audit_logs").get() or {}
+    relevant = [(k, v) for k, v in logs.items() if v.get("action") in {"add_broadcast", "edit_broadcast", "delete_broadcast", "restore_broadcast"}]
+    relevant.sort(key=lambda item: item[1].get("timestamp", ""), reverse=True)
+    if not relevant:
+        st.info("Belum ada perubahan data yang tercatat.")
+        return
+    for _, log in relevant[:50]:
+        action = {"add_broadcast": "menambahkan", "edit_broadcast": "memperbarui", "delete_broadcast": "menghapus", "restore_broadcast": "memulihkan"}.get(log.get("action"), log.get("action", "mengubah"))
+        st.markdown(f"**{log.get('mux', 'MUX')}** — {action} oleh **{log.get('nama', log.get('username', 'pengguna'))}**")
+        st.caption(f"{log.get('wilayah', '')}, {log.get('provinsi', '')} • {log.get('timestamp', '')}")
+        st.divider()
+
+
+def display_broadcast_map():
+    if st.button("⬅️ Kembali ke Beranda", key="back_broadcast_map"):
+        switch_page("beranda"); st.rerun()
+    st.header("🗺️ Peta Pemancar TV Digital")
+    st.write("Peta menampilkan lokasi yang koordinatnya sudah dimasukkan ke data MUX. Koordinat perlu diverifikasi sebelum dipublikasikan.")
+    rows = get_all_broadcast_rows()
+    located = []
+    for r in rows:
+        try:
+            lat, lon = float(r["latitude"]), float(r["longitude"])
+            if -11 <= lat <= 6 and 95 <= lon <= 141:
+                located.append({"latitude": lat, "longitude": lon, "MUX": r["mux"], "Wilayah": r["wilayah"], "Provinsi": r["provinsi"]})
+        except (TypeError, ValueError):
+            pass
+    if located:
+        st.map(pd.DataFrame(located), latitude="latitude", longitude="longitude")
+        st.dataframe(pd.DataFrame(located)[["MUX", "Wilayah", "Provinsi", "latitude", "longitude"]], use_container_width=True, hide_index=True)
+    else:
+        st.info("Belum ada koordinat pemancar. Pengguna login dapat menambahkan koordinat di bawah.")
+    if st.session_state.get("login") and rows:
+        labels = [f"{r['provinsi']} / {r['wilayah']} / {r['mux']}" for r in rows]
+        with st.form("map_coordinates_form"):
+            idx = st.selectbox("Pilih MUX", range(len(rows)), format_func=lambda i: labels[i])
+            col1, col2 = st.columns(2)
+            lat = col1.number_input("Latitude", min_value=-11.0, max_value=6.0, value=-6.2000, format="%.6f")
+            lon = col2.number_input("Longitude", min_value=95.0, max_value=141.0, value=106.8166, format="%.6f")
+            submitted = st.form_submit_button("Simpan koordinat")
+        if submitted:
+            r = rows[idx]
+            ref = db.reference(f"siaran/{r['provinsi']}/{r['wilayah']}/{r['mux']}")
+            before = ref.get()
+            if isinstance(before, list):
+                before = {"siaran": before}
+            updated = {**(before or {}), "latitude": lat, "longitude": lon}
+            ref.set(updated)
+            write_audit_log("update_coordinates", r["provinsi"], r["wilayah"], r["mux"], before=before, after=updated)
+            st.success("Koordinat disimpan. Pastikan titik benar-benar mewakili lokasi pemancar.")
+            st.rerun()
+
+
+def display_restore_history():
+    """Pemulihan versi sebelumnya hanya untuk admin."""
+    st.subheader("♻️ Riwayat Perubahan dan Pemulihan Data")
+    if not st.session_state.get("login") or not is_admin():
+        st.info("Pemulihan data hanya tersedia untuk admin.")
+        return
+    logs = db.reference("audit_logs").get() or {}
+    restorable = [(k, v) for k, v in logs.items() if v.get("before") is not None and v.get("action") in {"edit_broadcast", "delete_broadcast", "restore_broadcast"}]
+    restorable.sort(key=lambda item: item[1].get("timestamp", ""), reverse=True)
+    if not restorable:
+        st.info("Belum ada versi sebelumnya yang dapat dipulihkan. Riwayat versi mulai tersedia setelah perubahan baru tercatat.")
+        return
+    labels = [f"{v.get('timestamp', '')} — {v.get('provinsi', '')}/{v.get('wilayah', '')}/{v.get('mux', '')} ({v.get('action', '')})" for _, v in restorable]
+    chosen = st.selectbox("Pilih versi yang akan dipulihkan", range(len(restorable)), format_func=lambda i: labels[i], key="restore_log_select")
+    log_id, log = restorable[chosen]
+    st.json(log.get("before"))
+    confirm = st.checkbox("Saya memahami pemulihan akan mengganti data MUX saat ini", key="confirm_restore")
+    if st.button("Pulihkan versi terpilih", disabled=not confirm):
+        path = f"siaran/{log.get('provinsi')}/{log.get('wilayah')}/{log.get('mux')}"
+        current = db.reference(path).get()
+        previous = log.get("before")
+        db.reference(path).set(previous)
+        write_audit_log("restore_broadcast", log.get("provinsi", ""), log.get("wilayah", ""), log.get("mux", ""), before=current, after=previous)
+        st.success("Versi sebelumnya berhasil dipulihkan.")
+        st.rerun()
+
 
 def switch_page(page_name):
     """Fungsi untuk berpindah halaman."""
@@ -259,6 +414,12 @@ def display_sidebar():
             st.rerun()
         if st.sidebar.button("🚩 Laporkan Kesalahan Data"):
             switch_page("report_data")
+            st.rerun()
+        if st.sidebar.button("🔔 Notifikasi Siaran"):
+            switch_page("notifications")
+            st.rerun()
+        if st.sidebar.button("🗺️ Peta Pemancar"):
+            switch_page("map")
             st.rerun()
         if is_admin() and st.sidebar.button("🛠️ Dashboard Admin"):
             switch_page("admin")
@@ -676,8 +837,11 @@ def display_edit_data_page():
 
                             default_wilayah_normalized = re.sub(r'\s*-\s*', '-', default_wilayah)
                             
+                            old_path = f"siaran/{selected_provinsi}/{default_wilayah}/{default_mux}"
+                            old_snapshot = db.reference(old_path).get()
+                            write_audit_log("edit_broadcast", selected_provinsi, default_wilayah, default_mux, before=old_snapshot, after=data_to_update)
                             if default_wilayah_normalized != new_wilayah_clean or default_mux != new_mux_clean:
-                                db.reference(f"siaran/{selected_provinsi}/{default_wilayah}/{default_mux}").delete()
+                                db.reference(old_path).delete()
                                 st.toast("Data lama dihapus.")
                                 db.reference(f"siaran/{selected_provinsi}/{new_wilayah_clean}/{new_mux_clean}").set(data_to_update)
                             else:
@@ -1057,6 +1221,13 @@ display_sidebar()
 
 if st.session_state.halaman == "beranda":
     st.header("📺 Data Siaran TV Digital di Indonesia")
+    quick1, quick2, quick3 = st.columns(3)
+    if quick1.button("🔎 Pencarian Global", use_container_width=True):
+        switch_page("search"); st.rerun()
+    if quick2.button("📊 Statistik TV Digital", use_container_width=True):
+        switch_page("statistics"); st.rerun()
+    if quick3.button("🗺️ Peta Pemancar", use_container_width=True):
+        switch_page("map"); st.rerun()
     provinsi_data = db.reference("provinsi").get()
     
     if provinsi_data:
@@ -1184,3 +1355,12 @@ elif st.session_state.halaman == "leaderboard":
 
 elif st.session_state.halaman == "chatbot":
     display_chatbot_page()
+
+elif st.session_state.halaman == "search":
+    display_global_search()
+elif st.session_state.halaman == "statistics":
+    display_digital_statistics()
+elif st.session_state.halaman == "notifications":
+    display_notifications()
+elif st.session_state.halaman == "map":
+    display_broadcast_map()

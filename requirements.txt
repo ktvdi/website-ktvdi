@@ -3,3 +3,4 @@ fpdf
 firebase-admin
 Pillow
 google-generativeai
+pytz

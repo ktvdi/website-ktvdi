@@ -526,11 +526,33 @@ def display_sidebar():
     """Navbar modern dengan dropdown hamburger; sidebar Streamlit disembunyikan."""
     st.markdown("""
     <style>
-      /* Hilangkan navigasi/sidebar bawaan Streamlit */
-      [data-testid="stSidebar"], [data-testid="stSidebarNav"],
-      [data-testid="collapsedControl"] {display: none !important;}
-      [data-testid="stAppViewContainer"] > .main {padding-top: 0.6rem;}
-      .block-container {padding-top: 1.2rem; max-width: 1440px;}
+      /* Hilangkan seluruh navigasi dan chrome bawaan Streamlit */
+      [data-testid="stSidebar"],
+      [data-testid="stSidebarNav"],
+      [data-testid="collapsedControl"],
+      [data-testid="stHeader"],
+      [data-testid="stToolbar"],
+      [data-testid="stDecoration"],
+      #MainMenu,
+      footer,
+      header[data-testid="stHeader"] {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        min-height: 0 !important;
+      }
+      /* Pastikan konten tidak berada di bawah header Streamlit */
+      .stApp,
+      [data-testid="stAppViewContainer"],
+      [data-testid="stAppViewContainer"] > .main {
+        padding-top: 0 !important;
+        margin-top: 0 !important;
+      }
+      .block-container {
+        padding-top: 1.5rem !important;
+        padding-bottom: 2rem !important;
+        max-width: 1440px;
+      }
       /* Header navigasi bergaya website */
       .ktvdi-navbar {
         display:flex; align-items:center; justify-content:space-between;
@@ -561,6 +583,7 @@ def display_sidebar():
         background:rgba(128,128,128,.13) !important;
       }
       @media (max-width:640px) {
+        .block-container {padding-top: 1rem !important;}
         .ktvdi-navbar {padding:11px 12px; border-radius:12px;}
         .ktvdi-brand-title {font-size:14px;}
         .ktvdi-brand-sub {font-size:10px;}

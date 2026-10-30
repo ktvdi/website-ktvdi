@@ -354,7 +354,30 @@ def display_broadcast_map():
         else:
             st.caption("Hanya admin yang dapat menambahkan, memindahkan, atau menghapus titik pemancar.")
 
-        fmap = folium.Map(location=[center_lat, center_lon], zoom_start=zoom, control_scale=True)
+        # Pilihan layer peta: jalan (OpenStreetMap) dan citra satelit (Esri World Imagery).
+        fmap = folium.Map(
+            location=[center_lat, center_lon],
+            zoom_start=zoom,
+            control_scale=True,
+            tiles=None,
+        )
+        folium.TileLayer(
+            tiles="OpenStreetMap",
+            name="Peta Jalan",
+            overlay=False,
+            control=True,
+            show=True,
+        ).add_to(fmap)
+        folium.TileLayer(
+            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            attr="Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
+            name="Satelit",
+            overlay=False,
+            control=True,
+            show=False,
+        ).add_to(fmap)
+        folium.LayerControl(collapsed=False, position="topright").add_to(fmap)
+
         for r in located:
             mux = html.escape(str(r.get("mux", "")))
             wilayah = html.escape(str(r.get("wilayah", "")))

@@ -1337,6 +1337,16 @@ def display_chatbot_page():
 # --- ROUTING HALAMAN UTAMA APLIKASI ---
 
 st.title("🇮🇩 KOMUNITAS TV DIGITAL INDONESIA 🇮🇩")
+
+# Akses Login/Daftar ditempatkan tepat di bawah judul utama.
+if not st.session_state.login:
+    top_login_col, _ = st.columns([1, 3])
+    if top_login_col.button("🔐 Login / Daftar Akun", key="top_login_register"):
+        switch_page("login")
+        st.rerun()
+else:
+    st.caption(f"👤 Login sebagai **{st.session_state.username}**")
+
 display_sidebar()
 
 if st.session_state.halaman == "beranda":
@@ -1423,10 +1433,7 @@ if st.session_state.halaman == "beranda":
     if st.session_state.login:
         display_add_data_form()
     else:
-        st.info("Untuk menambahkan, memperbarui, atau menghapus data, silakan login terlebih dahulu.")
-        if st.button("🔐 Login / Daftar Akun"):
-            switch_page("login")
-            st.rerun()
+        st.info("Untuk menambahkan, memperbarui, atau menghapus data, silakan login terlebih dahulu melalui tombol Login / Daftar Akun di bagian atas halaman.")
 
 elif st.session_state.halaman == "login":
     users_ref = db.reference("users")

@@ -310,40 +310,95 @@ def display_broadcast_map():
     if st.button("⬅️ Kembali ke Beranda", key="back_broadcast_map"):
         switch_page("beranda"); st.rerun()
     st.header("🗺️ Peta Pemancar TV Digital")
-    st.write("Peta menampilkan lokasi yang koordinatnya sudah dimasukkan ke data MUX. Koordinat perlu diverifikasi sebelum dipublikasikan.")
+    st.write("Klik penanda untuk melihat nama wilayah layanan dan nama MUX. Pengguna yang login dapat menambahkan atau memindahkan titik dengan menandai lokasi langsung pada peta.")
     rows = get_all_broadcast_rows()
     located = []
     for r in rows:
         try:
             lat, lon = float(r["latitude"]), float(r["longitude"])
             if -11 <= lat <= 6 and 95 <= lon <= 141:
-                located.append({"latitude": lat, "longitude": lon, "MUX": r["mux"], "Wilayah": r["wilayah"], "Provinsi": r["provinsi"]})
+                located.append({**r, "latitude": lat, "longitude": lon})
         except (TypeError, ValueError):
             pass
-    if located:
-        st.map(pd.DataFrame(located), latitude="latitude", longitude="longitude")
-        st.dataframe(pd.DataFrame(located)[["MUX", "Wilayah", "Provinsi", "latitude", "longitude"]], use_container_width=True, hide_index=True)
-    else:
-        st.info("Belum ada koordinat pemancar. Pengguna login dapat menambahkan koordinat di bawah.")
-    if st.session_state.get("login") and rows:
-        labels = [f"{r['provinsi']} / {r['wilayah']} / {r['mux']}" for r in rows]
-        with st.form("map_coordinates_form"):
-            idx = st.selectbox("Pilih MUX", range(len(rows)), format_func=lambda i: labels[i])
-            col1, col2 = st.columns(2)
-            lat = col1.number_input("Latitude", min_value=-11.0, max_value=6.0, value=-6.2000, format="%.6f")
-            lon = col2.number_input("Longitude", min_value=95.0, max_value=141.0, value=106.8166, format="%.6f")
-            submitted = st.form_submit_button("Simpan koordinat")
-        if submitted:
-            r = rows[idx]
-            ref = db.reference(f"siaran/{r['provinsi']}/{r['wilayah']}/{r['mux']}")
-            before = ref.get()
-            if isinstance(before, list):
-                before = {"siaran": before}
-            updated = {**(before or {}), "latitude": lat, "longitude": lon}
-            ref.set(updated)
-            write_audit_log("update_coordinates", r["provinsi"], r["wilayah"], r["mux"], before=before, after=updated)
-            st.success("Koordinat disimpan. Pastikan titik benar-benar mewakili lokasi pemancar.")
-            st.rerun()
+
+    try:
+        import folium
+        from folium.plugins import Draw
+        from streamlit_folium import st_folium
+        import html
+
+        if located:
+            center_lat = sum(r["latitude"] for r in located) / len(located)
+            center_lon = sum(r["longitude"] for r in located) / len(located)
+            zoom = 6
+        else:
+            center_lat, center_lon, zoom = -2.5, 118.0, 5
+        fmap = folium.Map(location=[center_lat, center_lon], zoom_start=zoom, control_scale=True)
+
+        for r in located:
+            mux = html.escape(str(r["mux"]))
+            wilayah = html.escape(str(r["wilayah"]))
+            popup_html = f"""<div style='font-family:Arial,sans-serif;min-width:180px'>
+                <b>Wilayah Layanan:</b> {wilayah}<br>
+                <b>Nama MUX:</b> {mux}
+            </div>"""
+            folium.Marker(
+                location=[r["latitude"], r["longitude"]],
+                tooltip="Klik untuk melihat wilayah layanan dan MUX",
+                popup=folium.Popup(popup_html, max_width=260),
+                icon=folium.Icon(color="red", icon="broadcast-tower", prefix="fa")
+            ).add_to(fmap)
+
+        can_edit = bool(st.session_state.get("login")) and bool(rows)
+        if can_edit:
+            Draw(
+                export=False,
+                draw_options={"polyline": False, "polygon": False, "circle": False,
+                              "rectangle": False, "circlemarker": False, "marker": True},
+                edit_options={"edit": True, "remove": True}
+            ).add_to(fmap)
+            st.info("Untuk menambahkan titik: pilih ikon penanda pada toolbar peta, lalu klik lokasi pemancar. Setelah itu pilih MUX yang sesuai dan simpan.")
+        elif not st.session_state.get("login"):
+            st.caption("Login diperlukan untuk menambahkan atau mengubah titik pemancar.")
+
+        map_result = st_folium(
+            fmap, width=None, height=560, use_container_width=True,
+            key="digital_transmitter_map", returned_objects=["last_active_drawing"]
+        )
+        st.caption(f"Menampilkan {len(located)} titik pemancar dengan koordinat tersimpan. Klik penanda untuk melihat nama wilayah layanan dan nama MUX.")
+
+        if can_edit:
+            labels = [f"{r['provinsi']} / {r['wilayah']} / {r['mux']}" for r in rows]
+            with st.form("map_marker_save_form"):
+                idx = st.selectbox("Pilih MUX untuk titik yang ditandai", range(len(rows)), format_func=lambda i: labels[i])
+                save_point = st.form_submit_button("💾 Simpan titik yang ditandai")
+            drawing = (map_result or {}).get("last_active_drawing")
+            if save_point:
+                if not drawing or drawing.get("geometry", {}).get("type") != "Point":
+                    st.error("Tandai lokasi terlebih dahulu dengan ikon penanda pada peta.")
+                else:
+                    coords = drawing["geometry"].get("coordinates", [])
+                    if len(coords) < 2:
+                        st.error("Lokasi yang ditandai tidak valid. Silakan tandai ulang.")
+                    else:
+                        lon, lat = float(coords[0]), float(coords[1])
+                        if not (-11 <= lat <= 6 and 95 <= lon <= 141):
+                            st.error("Titik berada di luar rentang wilayah Indonesia. Silakan pilih lokasi di Indonesia.")
+                        else:
+                            r = rows[idx]
+                            ref = db.reference(f"siaran/{r['provinsi']}/{r['wilayah']}/{r['mux']}")
+                            before = ref.get()
+                            if isinstance(before, list):
+                                before = {"siaran": before}
+                            updated = {**(before or {}), "latitude": lat, "longitude": lon}
+                            ref.set(updated)
+                            write_audit_log("update_coordinates", r["provinsi"], r["wilayah"], r["mux"], before=before, after=updated)
+                            st.success(f"Titik untuk {r['mux']} — {r['wilayah']} berhasil disimpan.")
+                            st.rerun()
+    except ImportError:
+        st.warning("Peta interaktif memerlukan paket `folium` dan `streamlit-folium`. Pasang dengan: `pip install folium streamlit-folium`.")
+        if located:
+            st.dataframe(pd.DataFrame([{"Nama MUX": r["mux"], "Wilayah Layanan": r["wilayah"], "Latitude": r["latitude"], "Longitude": r["longitude"]} for r in located]), use_container_width=True, hide_index=True)
 
 
 def display_restore_history():

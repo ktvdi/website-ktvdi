@@ -4,3 +4,5 @@ firebase-admin
 Pillow
 google-generativeai
 pytz
+folium
+streamlit-folium

@@ -386,6 +386,21 @@ def display_broadcast_map():
         ).add_to(fmap)
         folium.LayerControl(collapsed=False, position="topright").add_to(fmap)
 
+        # Tombol GPS: browser meminta izin lokasi kepada pengguna saat tombol ditekan.
+        # Lokasi hanya digunakan untuk memusatkan peta dan tidak disimpan ke Firebase.
+        try:
+            from folium.plugins import LocateControl
+            LocateControl(
+                auto_start=False,
+                position="topleft",
+                strings={"title": "Tampilkan lokasi GPS saya"},
+                flyTo=True,
+                keepCurrentZoomLevel=False,
+                showPopup=False,
+            ).add_to(fmap)
+        except (ImportError, AttributeError):
+            st.caption("Kontrol GPS tidak tersedia pada versi Folium yang terpasang. Perbarui Folium untuk mengaktifkannya.")
+
         for r in located:
             mux = html.escape(str(r.get("mux", "")))
             wilayah = html.escape(str(r.get("wilayah", "")))

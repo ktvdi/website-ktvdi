@@ -647,6 +647,7 @@ def display_sidebar():
             ]
             if logged_in:
                 menu_items.extend([
+                    ("➕  Tambah Data Siaran", "add_data"),
                     ("👤  Profil Saya", "profile"),
                     ("👥  Profil Pengguna Lain", "other_users"),
                     ("🏆  Leaderboard", "leaderboard"),
@@ -831,8 +832,8 @@ def display_registration_form(users):
 
 def display_add_data_form():
     """Menampilkan form untuk menambahkan data siaran (hanya untuk user login)."""
-    st.markdown("---")
-    st.markdown("## ✍️ Tambahkan Data Siaran Baru")
+    st.markdown('<div class="ktvdi-section-note">Lengkapi informasi wilayah, penyelenggara MUX, dan daftar kanal siaran.</div>', unsafe_allow_html=True)
+    st.header("✍️ Tambah Data Siaran")
 
     provinsi_data = db.reference("provinsi").get()
     if not provinsi_data:
@@ -1567,10 +1568,22 @@ if st.session_state.halaman == "beranda":
     else:
         st.warning("Gagal memuat data provinsi.")
 
-    if st.session_state.login:
-        display_add_data_form()
-    else:
+    if not st.session_state.login:
         st.info("Untuk menambahkan, memperbarui, atau menghapus data, silakan login terlebih dahulu melalui tombol Login / Daftar Akun di bagian atas halaman.")
+
+elif st.session_state.halaman == "add_data":
+    if not st.session_state.login:
+        st.warning("Anda harus login untuk menambahkan data siaran.")
+        switch_page("login")
+        st.rerun()
+    else:
+        st.title("➕ Tambah Data Siaran")
+        st.caption("Masukkan data siaran baru untuk memperkaya basis data komunitas KTVDI.")
+        display_add_data_form()
+        st.markdown("---")
+        if st.button("⬅️ Kembali ke Beranda", key="back_from_add_data"):
+            switch_page("beranda")
+            st.rerun()
 
 elif st.session_state.halaman == "login":
     users_ref = db.reference("users")

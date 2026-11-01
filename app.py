@@ -519,9 +519,10 @@ def display_broadcast_map():
     )
     st.warning(
         "Peta hasil pengukuran bukan peta prediksi. Strength/Quality/SNR/BER tetap harus "
-        "dimasukkan dari menu TV/STB. Model propagasi di halaman ini tidak memakai DEM "
-        "elevasi, profil bukit, gedung, interferensi, atau pola antena; hasilnya indikatif, "
-        "bukan jaminan cakupan maupun pengganti pengukuran lapangan."
+        "dimasukkan dari menu TV/STB. Modul DEM menyediakan profil elevasi dan pemeriksaan "
+        "keterhalangan lintasan secara terpisah; model daya terima yang sedang aktif belum "
+        "mengubah path loss berdasarkan difraksi terrain, gedung, interferensi, atau pola antena. "
+        "Hasil tetap indikatif dan bukan jaminan cakupan maupun pengganti pengukuran lapangan."
     )
 
     rows = get_all_broadcast_rows()
@@ -805,6 +806,87 @@ def display_broadcast_map():
             target_lon = float(current_center.get("lng", center_lon))
         except (TypeError, ValueError, AttributeError):
             target_lat, target_lon = center_lat, center_lon
+
+        # Analisis profil elevasi on-demand: DEMNAS BIG 30 m + cache lokal + fallback opsional.
+        if filtered_located:
+            with st.expander("⛰️ Analisis profil medan pemancar–penerima (DEM 30 m)", expanded=False):
+                st.caption(
+                    "Mengambil DEM hanya di sekitar lintasan yang dipilih. Sumber utama DEMNAS BIG; "
+                    "hasil disimpan sementara di cache `/tmp` Streamlit Cloud. Fallback OpenTopography memerlukan "
+                    "OPENTOPOGRAPHY_API_KEY, atau gunakan GeoTIFF lokal melalui KTVDI_DEM_PATH."
+                )
+                tx_labels = [
+                    f"{tx.get('mux', 'MUX')} — {tx.get('wilayah', '')}, {tx.get('provinsi', '')} "
+                    f"({tx['latitude']:.5f}, {tx['longitude']:.5f})"
+                    for tx in filtered_located
+                ]
+                default_tx_index = 0
+                if selected_row is not None:
+                    for idx, candidate in enumerate(filtered_located):
+                        if (candidate.get('provinsi'), candidate.get('wilayah'), candidate.get('mux')) == (
+                            selected_row.get('provinsi'), selected_row.get('wilayah'), selected_row.get('mux')
+                        ):
+                            default_tx_index = idx
+                            break
+                profile_tx_idx = st.selectbox(
+                    "Pemancar untuk dianalisis", range(len(filtered_located)),
+                    index=default_tx_index, format_func=lambda i: tx_labels[i],
+                    key="dem_profile_transmitter"
+                )
+                profile_tx = filtered_located[profile_tx_idx]
+                profile_inputs = _tx_prediction_inputs(profile_tx)
+                profile_frequency = profile_inputs.get("frequency_mhz") or 600.0
+                try:
+                    profile_frequency = float(profile_frequency)
+                except (TypeError, ValueError):
+                    profile_frequency = 600.0
+                profile_c1, profile_c2 = st.columns(2)
+                profile_tx_height = profile_c1.number_input(
+                    "Tinggi antena TX AGL (m)", min_value=1.0, max_value=500.0,
+                    value=float(profile_inputs.get("tx_height_m") or 30.0), step=1.0,
+                    key="dem_profile_tx_height"
+                )
+                profile_rx_height = profile_c2.number_input(
+                    "Tinggi antena RX AGL (m)", min_value=1.0, max_value=30.0,
+                    value=float(rx_height), step=0.5, key="dem_profile_rx_height"
+                )
+                if st.button("Jalankan analisis profil DEM 30 m", key="run_dem_terrain_profile"):
+                    try:
+                        from geospatial.terrain_profile import analyze_terrain_path
+                        profile_result = analyze_terrain_path(
+                            profile_tx["latitude"], profile_tx["longitude"],
+                            target_lat, target_lon, profile_tx_height, profile_rx_height,
+                            profile_frequency, sample_spacing_m=30.0, resolution_m=30.0
+                        )
+                        st.session_state["dem_terrain_profile_result"] = profile_result
+                        st.session_state["dem_terrain_profile_error"] = ""
+                    except Exception as exc:
+                        st.session_state["dem_terrain_profile_error"] = str(exc)
+                        st.session_state.pop("dem_terrain_profile_result", None)
+                if st.session_state.get("dem_terrain_profile_error"):
+                    st.error(st.session_state["dem_terrain_profile_error"])
+                profile_result = st.session_state.get("dem_terrain_profile_result")
+                if profile_result:
+                    status_los = "Lintasan geometris tidak terhalang" if profile_result["geometric_los_clear"] else "Ada indikasi penghalang terrain"
+                    status_fresnel = "≥60% zona Fresnel pertama bersih" if profile_result["first_fresnel_60pct_clear"] else "Zona Fresnel pertama berpotensi terganggu"
+                    st.write(f"**Status garis pandang:** {status_los}")
+                    st.write(f"**Status Fresnel:** {status_fresnel}")
+                    dm1, dm2, dm3 = st.columns(3)
+                    dm1.metric("Jarak lintasan", f"{profile_result['distance_km']:.2f} km")
+                    dm2.metric("Clearance minimum", f"{profile_result['minimum_clearance_m']:.1f} m")
+                    dm3.metric("Rasio clearance Fresnel", f"{profile_result['minimum_fresnel_clearance_ratio']:.2f}")
+                    profile_frame = pd.DataFrame({
+                        "Jarak dari TX (km)": profile_result["distance_km_samples"],
+                        "Elevasi terrain (m)": profile_result["terrain_elevation_m"],
+                        "Garis TX–RX (m)": profile_result["line_of_sight_m"],
+                        "Terrain + kelengkungan (m)": profile_result["terrain_with_curvature_m"],
+                    }).set_index("Jarak dari TX (km)")
+                    st.line_chart(profile_frame, use_container_width=True)
+                    st.caption(
+                        f"Sumber: {profile_result['dem_source']} • {profile_result['sample_count']} sampel • "
+                        f"jarak sampel ~{profile_result['sample_spacing_m']:.1f} m • k efektif bumi {profile_result['effective_earth_k']:.3g}. "
+                        + profile_result["warning"]
+                    )
 
         # Parameter teknis pemancar dapat diperbarui admin, tetap opsional dan bersumber dari data resmi.
         if admin_can_manage and selected_row is not None:

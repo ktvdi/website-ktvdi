@@ -510,6 +510,29 @@ def display_broadcast_map():
         from streamlit_folium import st_folium
         import html
 
+        # Parameter model dipakai bersama oleh heatmap prediksi dan tabel estimasi.
+        if filtered_located:
+            st.subheader("📡 Pengaturan heatmap prediksi pemancar")
+            pc1, pc2, pc3 = st.columns(3)
+            model_choice = pc1.selectbox(
+                "Model propagasi", ["FSPL (ruang bebas)", "Hata (perkotaan)", "Hata (pinggiran kota)"],
+                key="map_path_model"
+            )
+            rx_height = pc2.number_input("Tinggi antena penerima (m)", min_value=1.0, max_value=30.0,
+                value=3.0, step=0.5, key="map_rx_height")
+            rx_gain = pc3.number_input("Gain antena penerima (dBi)", min_value=-5.0, max_value=25.0,
+                value=8.0, step=0.5, key="map_rx_gain")
+            system_loss = st.slider("Rugi kabel/konektor/sistem (dB)", min_value=0.0, max_value=20.0,
+                value=3.0, step=0.5, key="map_system_loss")
+            prediction_radius_km = st.slider(
+                "Radius simulasi dari setiap pemancar (km)", min_value=10, max_value=100,
+                value=40, step=5, key="map_prediction_radius"
+            )
+            environment = model_choice.replace("FSPL (ruang bebas)", "FSPL")
+        else:
+            environment = "FSPL"
+            rx_height, rx_gain, system_loss, prediction_radius_km = 3.0, 8.0, 3.0, 40
+
         if filtered_located:
             center_lat = sum(r["latitude"] for r in filtered_located) / len(filtered_located)
             center_lon = sum(r["longitude"] for r in filtered_located) / len(filtered_located)
@@ -561,6 +584,62 @@ def display_broadcast_map():
                 icon=folium.Icon(color="red", icon="tower-broadcast", prefix="fa")
             ).add_to(fmap)
 
+        # Heatmap prediksi dihitung dari koordinat setiap pemancar, bukan titik laporan.
+        # Grid sengaja dibuat jarang agar peta tetap responsif; bukan simulasi terrain-aware.
+        if filtered_located:
+            from math import cos, radians
+            predicted_points = []
+            grid_step_deg = 0.04
+            max_transmitters_for_grid = 30
+            for tx in filtered_located[:max_transmitters_for_grid]:
+                detail = tx.get("detail", {}) or {}
+                frequency = detail.get("frequency_mhz") or _uhf_frequency_mhz(tx.get("mux", ""))
+                if not frequency:
+                    continue
+                try:
+                    frequency = float(frequency)
+                    erp = float(detail.get("erp_watt") or 1000.0)
+                    tx_height = float(detail.get("antenna_height_m") or 30.0)
+                    if frequency <= 0 or erp <= 0 or tx_height <= 0:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+
+                lat_radius = prediction_radius_km / 111.0
+                lon_scale = max(0.2, cos(radians(tx["latitude"])))
+                lon_radius = prediction_radius_km / (111.0 * lon_scale)
+                lat_steps = int(lat_radius / grid_step_deg) + 1
+                lon_steps = int(lon_radius / grid_step_deg) + 1
+                for iy in range(-lat_steps, lat_steps + 1):
+                    grid_lat = tx["latitude"] + iy * grid_step_deg
+                    if not -11 <= grid_lat <= 6:
+                        continue
+                    for ix in range(-lon_steps, lon_steps + 1):
+                        grid_lon = tx["longitude"] + ix * grid_step_deg
+                        if not 95 <= grid_lon <= 141:
+                            continue
+                        distance = _haversine_km(tx["latitude"], tx["longitude"], grid_lat, grid_lon)
+                        if distance > prediction_radius_km:
+                            continue
+                        result = _estimate_tv_signal(
+                            tx, distance, frequency, erp, tx_height,
+                            rx_height, rx_gain, system_loss, environment
+                        )
+                        received_dbm = result["received_dbm"]
+                        # Skala warna relatif -120 hingga -50 dBm; bukan ambang penerimaan resmi.
+                        intensity = max(0.03, min(1.0, (received_dbm + 120.0) / 70.0))
+                        predicted_points.append([grid_lat, grid_lon, intensity])
+
+            if predicted_points:
+                HeatMap(
+                    predicted_points, name="Heatmap Prediksi dari Pemancar",
+                    radius=18, blur=22, min_opacity=0.18, max_zoom=12
+                ).add_to(fmap)
+            else:
+                st.info("Heatmap prediksi belum dapat dibuat. Periksa koordinat, frekuensi, dan parameter pemancar.")
+            if len(filtered_located) > max_transmitters_for_grid:
+                st.caption(f"Simulasi dibatasi pada {max_transmitters_for_grid} pemancar pertama agar peta tetap ringan.")
+
         if display_mode in ("Heatmap kualitas", "Titik + heatmap"):
             heat_points = [
                 [m["latitude"], m["longitude"], max(0.05, min(1.0, m["_quality_num"] / 100.0))]
@@ -604,7 +683,7 @@ def display_broadcast_map():
         )
         st.caption(
             f"{len(filtered_located)} pemancar • {len(filtered_measurements)} laporan pada filter. "
-            "Heatmap memperlihatkan konsentrasi nilai Quality laporan, bukan simulasi propagasi."
+            "Heatmap Quality berasal dari titik laporan pengguna; Heatmap Prediksi dihitung dari titik pemancar menggunakan model propagasi sederhana."
         )
         current_center = (map_result or {}).get("center") or {"lat": center_lat, "lng": center_lon}
         try:
@@ -694,15 +773,6 @@ def display_broadcast_map():
         # Estimasi seluruh kandidat pemancar, bukan sekadar yang terdekat.
         st.subheader("📡 Perbandingan estimasi penerimaan dari pemancar")
         if filtered_located:
-            ec1, ec2, ec3 = st.columns(3)
-            model_choice = ec1.selectbox("Model propagasi", ["FSPL (ruang bebas)", "Hata (perkotaan)", "Hata (pinggiran kota)"], key="map_path_model")
-            rx_height = ec2.number_input("Tinggi antena penerima (m)", min_value=1.0, max_value=30.0,
-                value=3.0, step=0.5, key="map_rx_height")
-            rx_gain = ec3.number_input("Gain antena penerima (dBi)", min_value=-5.0, max_value=25.0,
-                value=8.0, step=0.5, key="map_rx_gain")
-            system_loss = st.slider("Rugi kabel/konektor/sistem (dB)", min_value=0.0, max_value=20.0,
-                value=3.0, step=0.5, key="map_system_loss")
-            environment = model_choice.replace("FSPL (ruang bebas)", "FSPL")
             estimates = []
             for tx in filtered_located:
                 distance = _haversine_km(target_lat, target_lon, tx["latitude"], tx["longitude"])

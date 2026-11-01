@@ -552,6 +552,20 @@ def display_broadcast_map():
                 pass
 
         fmap = folium.Map(location=[center_lat, center_lon], zoom_start=zoom, control_scale=True, tiles=None)
+        # Perkecil teks pada opsi layer agar nama heatmap tidak mendominasi peta.
+        layer_control_css = """<style>
+        .leaflet-control-layers,
+        .leaflet-control-layers label,
+        .leaflet-control-layers-list,
+        .leaflet-control-layers-base,
+        .leaflet-control-layers-overlays {
+            font-size: 11px !important;
+            line-height: 1.25 !important;
+        }
+        .leaflet-control-layers label { margin-bottom: 3px !important; }
+        .leaflet-control-layers-list { padding: 4px 6px !important; }
+        </style>"""
+        fmap.get_root().header.add_child(folium.Element(layer_control_css))
         folium.TileLayer("OpenStreetMap", name="Peta Jalan", overlay=False, control=True, show=True).add_to(fmap)
         folium.TileLayer(
             tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",

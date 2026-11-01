@@ -372,38 +372,138 @@ def _parse_measurement_datetime(record):
 
 
 def _estimate_tv_signal(tx, distance_km, frequency_mhz, erp_watt, tx_height_m,
-                        rx_height_m, rx_gain_dbi, system_loss_db, model_name):
-    """
-    Estimasi kasar level daya terima. Hata hanya dipakai dalam rentang validnya;
-    selain itu kembali ke FSPL. Bukan model terrain-aware atau prediksi coverage resmi.
-    """
-    from math import log10
-    distance_km = max(float(distance_km), 0.05)
-    frequency_mhz = float(frequency_mhz)
-    erp_watt = max(float(erp_watt), 0.001)
-    eirp_dbm = 10 * log10(erp_watt * 1000.0) + 2.15
-    selected_model = "FSPL"
-    path_loss_db = 32.44 + 20 * log10(frequency_mhz) + 20 * log10(distance_km)
+                        rx_height_m, rx_gain_dbi, system_loss_db, model_name,
+                        power_reference="ERP"):
+    """Hitung estimasi daya terima indikatif; belum memperhitungkan terrain/antenna pattern.
 
-    if model_name == "Hata (perkotaan)" and 150 <= frequency_mhz <= 1500 and 1 <= distance_km <= 20 and 30 <= tx_height_m <= 200 and 1 <= rx_height_m <= 10:
+    erp_watt secara default harus benar-benar ERP. Jika sumber data menyimpan EIRP,
+    panggil dengan power_reference="EIRP" agar konversi +2,15 dB tidak diterapkan.
+    """
+    from math import isfinite, log10
+
+    def _positive(name, value):
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"{name} harus berupa angka.")
+        if not isfinite(number) or number <= 0:
+            raise ValueError(f"{name} harus lebih besar dari nol dan bernilai hingga.")
+        return number
+
+    try:
+        distance_km = float(distance_km)
+    except (TypeError, ValueError):
+        raise ValueError("Jarak harus berupa angka.")
+    if not isfinite(distance_km) or distance_km < 0:
+        raise ValueError("Jarak harus bernilai hingga dan tidak boleh negatif.")
+    # Titik tepat di koordinat pemancar tidak boleh menghasilkan log10(0).
+    distance_floor_applied = distance_km < 0.05
+    distance_km = max(distance_km, 0.05)
+    frequency_mhz = _positive("Frekuensi", frequency_mhz)
+    erp_watt = _positive("ERP/EIRP", erp_watt)
+    tx_height_m = _positive("Tinggi antena pemancar", tx_height_m)
+    rx_height_m = _positive("Tinggi antena penerima", rx_height_m)
+    try:
+        rx_gain_dbi = float(rx_gain_dbi)
+        system_loss_db = float(system_loss_db)
+    except (TypeError, ValueError):
+        raise ValueError("Gain penerima dan rugi sistem harus berupa angka.")
+    if not isfinite(rx_gain_dbi) or not isfinite(system_loss_db) or system_loss_db < 0:
+        raise ValueError("Gain harus bernilai hingga dan rugi sistem tidak boleh negatif.")
+
+    if power_reference not in ("ERP", "EIRP"):
+        raise ValueError("power_reference hanya boleh ERP atau EIRP.")
+    # 1 W = 30 dBm. ERP dikonversi ke EIRP dengan +2,15 dB.
+    input_power_dbm = 10 * log10(erp_watt * 1000.0)
+    eirp_dbm = input_power_dbm + (2.15 if power_reference == "ERP" else 0.0)
+
+    selected_model = "FSPL"
+    fallback_reason = None
+    path_loss_db = 32.44 + 20 * log10(frequency_mhz) + 20 * log10(distance_km)
+    hata_valid = (
+        150 <= frequency_mhz <= 1500
+        and 1 <= distance_km <= 20
+        and 30 <= tx_height_m <= 200
+        and 1 <= rx_height_m <= 10
+    )
+
+    if model_name in ("Hata (perkotaan)", "Hata (pinggiran kota)") and hata_valid:
         log_f = log10(frequency_mhz)
         log_hm = log10(rx_height_m)
         correction = (1.1 * log_f - 0.7) * rx_height_m - (1.56 * log_f - 0.8)
-        path_loss_db = (69.55 + 26.16 * log_f - 13.82 * log10(tx_height_m)
-                        - correction + (44.9 - 6.55 * log10(tx_height_m)) * log10(distance_km))
-        selected_model = "Okumura-Hata perkotaan"
-    elif model_name == "Hata (pinggiran kota)" and 150 <= frequency_mhz <= 1500 and 1 <= distance_km <= 20 and 30 <= tx_height_m <= 200 and 1 <= rx_height_m <= 10:
-        log_f = log10(frequency_mhz)
-        log_hm = log10(rx_height_m)
-        correction = (1.1 * log_f - 0.7) * rx_height_m - (1.56 * log_f - 0.8)
-        urban_loss = (69.55 + 26.16 * log_f - 13.82 * log10(tx_height_m)
-                      - correction + (44.9 - 6.55 * log10(tx_height_m)) * log10(distance_km))
-        path_loss_db = urban_loss - 2 * (log10(frequency_mhz / 28) ** 2) - 5.4
-        selected_model = "Okumura-Hata pinggiran kota"
-    received_dbm = eirp_dbm - path_loss_db + float(rx_gain_dbi) - float(system_loss_db)
+        urban_loss = (
+            69.55 + 26.16 * log_f - 13.82 * log10(tx_height_m)
+            - correction + (44.9 - 6.55 * log10(tx_height_m)) * log10(distance_km)
+        )
+        if model_name == "Hata (perkotaan)":
+            path_loss_db = urban_loss
+            selected_model = "Okumura-Hata perkotaan"
+        else:
+            path_loss_db = urban_loss - 2 * (log10(frequency_mhz / 28) ** 2) - 5.4
+            selected_model = "Okumura-Hata pinggiran kota"
+    elif model_name in ("Hata (perkotaan)", "Hata (pinggiran kota)"):
+        fallback_reason = (
+            "Parameter di luar rentang implementasi Hata (frekuensi 150–1500 MHz, "
+            "jarak 1–20 km, tinggi pemancar 30–200 m, tinggi penerima 1–10 m); "
+            "FSPL dipakai sebagai fallback teoritis."
+        )
+    elif model_name not in ("FSPL", "FSPL (ruang bebas)"):
+        raise ValueError(f"Model propagasi tidak dikenal: {model_name}")
+
+    received_dbm = eirp_dbm - path_loss_db + rx_gain_dbi - system_loss_db
     return {
-        "received_dbm": received_dbm, "path_loss_db": path_loss_db,
-        "eirp_dbm": eirp_dbm, "model": selected_model
+        "received_dbm": received_dbm,
+        "path_loss_db": path_loss_db,
+        "eirp_dbm": eirp_dbm,
+        "model": selected_model,
+        "requested_model": model_name,
+        "fallback_reason": fallback_reason,
+        "power_reference": power_reference,
+        "terrain_used": False,
+        "antenna_pattern_used": False,
+        "distance_floor_applied": distance_floor_applied,
+        "distance_used_km": distance_km,
+    }
+
+
+def _tx_prediction_inputs(tx):
+    """Ambil parameter pemancar dan tandai setiap nilai asumsi/perkiraan."""
+    detail = tx.get("detail", {}) or {}
+    assumptions = []
+
+    raw_frequency = detail.get("frequency_mhz")
+    if raw_frequency not in (None, ""):
+        frequency = raw_frequency
+        frequency_source = "Data teknis tersimpan"
+    else:
+        frequency = _uhf_frequency_mhz(tx.get("mux", ""))
+        frequency_source = "Perkiraan dari nama MUX"
+        if frequency:
+            assumptions.append("Frekuensi diperkirakan dari nama MUX")
+
+    raw_erp = detail.get("erp_watt")
+    if raw_erp not in (None, ""):
+        erp = raw_erp
+        erp_source = "Data teknis tersimpan"
+    else:
+        erp = 1000.0
+        erp_source = "Asumsi aplikasi: 1.000 W"
+        assumptions.append("ERP diasumsikan 1.000 W")
+
+    raw_height = detail.get("antenna_height_m")
+    if raw_height not in (None, ""):
+        tx_height = raw_height
+        height_source = "Data teknis tersimpan"
+    else:
+        tx_height = 30.0
+        height_source = "Asumsi aplikasi: 30 m"
+        assumptions.append("Tinggi antena pemancar diasumsikan 30 m")
+
+    return {
+        "frequency_mhz": frequency, "frequency_source": frequency_source,
+        "erp_watt": erp, "erp_source": erp_source,
+        "tx_height_m": tx_height, "height_source": height_source,
+        "assumptions": assumptions,
     }
 
 
@@ -606,14 +706,14 @@ def display_broadcast_map():
             grid_step_deg = 0.04
             max_transmitters_for_grid = 30
             for tx in filtered_located[:max_transmitters_for_grid]:
-                detail = tx.get("detail", {}) or {}
-                frequency = detail.get("frequency_mhz") or _uhf_frequency_mhz(tx.get("mux", ""))
+                tx_inputs = _tx_prediction_inputs(tx)
+                frequency = tx_inputs["frequency_mhz"]
                 if not frequency:
                     continue
                 try:
                     frequency = float(frequency)
-                    erp = float(detail.get("erp_watt") or 1000.0)
-                    tx_height = float(detail.get("antenna_height_m") or 30.0)
+                    erp = float(tx_inputs["erp_watt"])
+                    tx_height = float(tx_inputs["tx_height_m"])
                     if frequency <= 0 or erp <= 0 or tx_height <= 0:
                         continue
                 except (TypeError, ValueError):
@@ -790,17 +890,26 @@ def display_broadcast_map():
             estimates = []
             for tx in filtered_located:
                 distance = _haversine_km(target_lat, target_lon, tx["latitude"], tx["longitude"])
-                detail = tx.get("detail", {}) or {}
-                frequency = detail.get("frequency_mhz") or _uhf_frequency_mhz(tx.get("mux", ""))
-                erp = detail.get("erp_watt") or 1000.0
-                tx_height = detail.get("antenna_height_m") or 30.0
+                tx_inputs = _tx_prediction_inputs(tx)
+                frequency = tx_inputs["frequency_mhz"]
+                erp = tx_inputs["erp_watt"]
+                tx_height = tx_inputs["tx_height_m"]
                 if frequency:
-                    result = _estimate_tv_signal(tx, distance, frequency, erp, tx_height,
-                                                 rx_height, rx_gain, system_loss, environment)
+                    try:
+                        result = _estimate_tv_signal(tx, distance, frequency, erp, tx_height,
+                                                     rx_height, rx_gain, system_loss, environment)
+                    except ValueError:
+                        continue
+                    data_status = "Data lengkap" if not tx_inputs["assumptions"] else "Mengandung asumsi"
                     estimates.append({
                         "MUX": tx.get("mux"), "Wilayah": tx.get("wilayah"),
                         "Jarak (km)": round(distance, 2), "Frekuensi (MHz)": round(float(frequency), 1),
-                        "ERP (W)": erp, "Model terpakai": result["model"],
+                        "Sumber frekuensi": tx_inputs["frequency_source"],
+                        "ERP (W)": erp, "Sumber ERP": tx_inputs["erp_source"],
+                        "Tinggi antena (m)": tx_height, "Sumber tinggi": tx_inputs["height_source"],
+                        "Status data": data_status, "Catatan asumsi": "; ".join(tx_inputs["assumptions"]) or "Tidak ada",
+                        "Model terpakai": result["model"],
+                        "Alasan fallback": result["fallback_reason"] or "—",
                         "Path loss (dB)": round(result["path_loss_db"], 1),
                         "Estimasi daya (dBm)": round(result["received_dbm"], 1),
                         "_tx": tx, "_result": result
@@ -814,8 +923,9 @@ def display_broadcast_map():
                           help="Perbandingan model indikatif, bukan jaminan MUX paling mudah diterima.")
                 st.caption(
                     f"Kandidat tertinggi: {best['MUX']} — {best['Wilayah']}, jarak {best['Jarak (km)']} km. "
-                    "Frekuensi eksplisit dari data teknis diprioritaskan; jika kosong, kanal UHF pada nama MUX diperkirakan. "
-                    "ERP default 1.000 W hanya asumsi saat ERP aktual belum diisi. Gain, tinggi, dan rugi sistem juga memengaruhi hasil."
+                    "Periksa kolom sumber data dan catatan asumsi sebelum menafsirkan hasil. "
+                    "ERP yang dimasukkan dianggap ERP (bukan EIRP); gain antena pemancar tidak ditambahkan lagi "
+                    "karena efek gain arah referensi semestinya sudah tercermin dalam ERP."
                 )
             else:
                 st.info("Frekuensi tidak tersedia. Isi frekuensi aktual atau gunakan nama MUX dengan format UHF 21–48.")

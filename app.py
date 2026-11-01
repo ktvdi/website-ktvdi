@@ -418,14 +418,6 @@ def display_broadcast_map():
         else:
             st.info("Belum ada data MUX. Tambahkan data siaran terlebih dahulu.")
 
-        # Radius visual dapat diatur pengguna. Ini adalah ilustrasi jarak, bukan kontur RF.
-        st.subheader("🟢 Visualisasi area jangkauan pemancar")
-        coverage_radius_km = st.slider(
-            "Radius ilustrasi jangkauan dari setiap pemancar (km)",
-            min_value=5, max_value=150, value=30, step=5,
-            help="Lingkaran menunjukkan radius jarak dari titik pemancar, bukan batas penerimaan DVB-T2 yang terukur."
-        )
-
         fmap = folium.Map(location=[center_lat, center_lon], zoom_start=zoom, control_scale=True, tiles=None)
         folium.TileLayer("OpenStreetMap", name="Peta Jalan", overlay=False, control=True, show=True).add_to(fmap)
         folium.TileLayer(
@@ -444,28 +436,6 @@ def display_broadcast_map():
             ).add_to(fmap)
         except (ImportError, AttributeError):
             st.caption("Kontrol GPS tidak tersedia. Perbarui Folium.")
-
-        # Cakupan ilustratif: satu lingkaran jarak di sekitar tiap pemancar.
-        coverage_layer = folium.FeatureGroup(
-            name=f"Radius ilustrasi {coverage_radius_km} km", show=True
-        )
-        for r in located:
-            mux_label = html.escape(str(r.get("mux", "MUX")))
-            area_label = html.escape(str(r.get("wilayah", "")))
-            folium.Circle(
-                location=[r["latitude"], r["longitude"]],
-                radius=coverage_radius_km * 1000,
-                color="#16803c", weight=2,
-                fill=True, fill_color="#42b96b", fill_opacity=0.12,
-                tooltip=f"Radius ilustrasi {coverage_radius_km} km — {mux_label}",
-                popup=folium.Popup(
-                    f"<b>Radius ilustrasi:</b> {coverage_radius_km} km<br>"
-                    f"<b>MUX:</b> {mux_label}<br><b>Wilayah:</b> {area_label}<br>"
-                    "Bukan batas cakupan RF atau jaminan penerimaan sinyal.",
-                    max_width=300
-                )
-            ).add_to(coverage_layer)
-        coverage_layer.add_to(fmap)
 
         # Penanda lokasi pemancar.
         for r in located:
@@ -509,18 +479,14 @@ def display_broadcast_map():
             crosshair = """<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;pointer-events:none;color:#1769aa;font-size:30px;font-weight:bold;text-shadow:0 0 3px white,0 0 5px white">⊕</div>"""
             fmap.get_root().html.add_child(folium.Element(crosshair))
 
-        # Pertahankan key yang stabil agar komponen peta tidak di-reset
-        # setiap kali Streamlit melakukan rerun akibat perubahan slider.
         map_result = st_folium(
-            fmap, width=700, height=560, use_container_width=True,
+            fmap, width=None, height=560, use_container_width=True,
             key="digital_transmitter_map",
             returned_objects=["center", "zoom"]
         )
         st.caption(
             f"{len(located)} lokasi pemancar • {len(measurements)} laporan pengukuran. "
-            f"Area hijau transparan = radius ilustrasi {coverage_radius_km} km dari pemancar; "
-            "titik merah = pemancar; titik pengukuran berwarna mengikuti Quality. "
-            "Radius bukan prediksi cakupan siaran yang tervalidasi."
+            "Titik merah = pemancar; lingkaran = laporan pengukuran (hijau/kuning/merah berdasarkan Quality)."
         )
 
         current_center = (map_result or {}).get("center") or {"lat": center_lat, "lng": center_lon}

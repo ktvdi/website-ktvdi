@@ -589,6 +589,31 @@ def display_sidebar():
         .ktvdi-brand-sub {font-size:10px;}
         [data-testid="stPopover"] > button {padding:0 11px !important;}
       }
+      :root {--ktvdi-blue:#1769aa;--ktvdi-blue-deep:#103b66;--ktvdi-cyan:#38bdf8;--ktvdi-radius:18px;}
+      .block-container {max-width:1320px !important;padding-left:clamp(1rem,4vw,3rem) !important;padding-right:clamp(1rem,4vw,3rem) !important;}
+      .ktvdi-brand {padding:13px 17px;border:1px solid rgba(128,128,128,.20);border-radius:16px;background:var(--secondary-background-color);box-shadow:0 8px 28px rgba(15,45,75,.07);}
+      .ktvdi-logo {display:grid;place-items:center;width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#e0f2fe,#dbeafe);font-size:26px;flex:0 0 auto;}
+      .ktvdi-brand-title {font-size:clamp(13px,1.5vw,17px);font-weight:800;letter-spacing:.035em;}
+      .ktvdi-brand-sub {font-size:12px;opacity:.72;}
+      h1,h2,h3 {letter-spacing:-.025em;font-weight:750 !important;} h1 {font-size:clamp(1.65rem,3vw,2.35rem) !important;} h2 {font-size:clamp(1.25rem,2.2vw,1.65rem) !important;} h3 {font-size:1.08rem !important;}
+      [data-testid="stAppViewContainer"] {background:radial-gradient(ellipse at 8% 0%,rgba(56,189,248,.08),transparent 32%),var(--background-color);}
+      [data-testid="stVerticalBlockBorderWrapper"] {border-radius:var(--ktvdi-radius) !important;border-color:rgba(128,128,128,.20) !important;}
+      [data-testid="stMetric"] {padding:16px 18px;border:1px solid rgba(128,128,128,.20);border-radius:16px;background:var(--secondary-background-color);box-shadow:0 6px 20px rgba(15,45,75,.045);}
+      [data-testid="stMetricLabel"] {font-weight:650;} [data-testid="stMetricValue"] {font-weight:800;letter-spacing:-.04em;}
+      [data-testid="stBaseButton-primary"] {border:0 !important;border-radius:11px !important;background:linear-gradient(135deg,#1769aa,#258bd0) !important;box-shadow:0 5px 14px rgba(23,105,170,.18);font-weight:700 !important;}
+      [data-testid="stBaseButton-secondary"],[data-testid="stDownloadButton"] button {border-radius:11px !important;font-weight:650 !important;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease;}
+      [data-testid="stBaseButton-secondary"]:hover {transform:translateY(-1px);border-color:rgba(23,105,170,.55) !important;box-shadow:0 5px 15px rgba(15,45,75,.08);}
+      [data-testid="stTextInput"] input,[data-testid="stTextArea"] textarea,[data-testid="stSelectbox"] [data-baseweb="select"] > div,[data-testid="stNumberInput"] input {border-radius:11px !important;}
+      [data-testid="stExpander"] {border:1px solid rgba(128,128,128,.20) !important;border-radius:14px !important;overflow:hidden;background:var(--secondary-background-color);}
+      [data-testid="stDataFrame"],[data-testid="stTable"] {border:1px solid rgba(128,128,128,.18);border-radius:13px;overflow:hidden;}
+      [data-testid="stAlert"] {border-radius:13px;} [data-testid="stChatMessage"] {border-radius:15px;border:1px solid rgba(128,128,128,.12);}
+      .ktvdi-hero {position:relative;overflow:hidden;padding:clamp(24px,4vw,42px);margin:8px 0 24px;border-radius:22px;color:white;background:linear-gradient(120deg,#0d3158 0%,#1769aa 58%,#1596c5 100%);box-shadow:0 16px 36px rgba(12,67,112,.20);}
+      .ktvdi-hero:after {content:"";position:absolute;width:280px;height:280px;right:-70px;top:-130px;border:1px solid rgba(255,255,255,.20);border-radius:50%;box-shadow:0 0 0 28px rgba(255,255,255,.045),0 0 0 58px rgba(255,255,255,.035);}
+      .ktvdi-hero-kicker {font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;opacity:.78;}
+      .ktvdi-hero-title {position:relative;z-index:1;max-width:760px;margin:9px 0 10px;font-size:clamp(25px,4vw,39px);line-height:1.13;font-weight:850;letter-spacing:-.04em;}
+      .ktvdi-hero-copy {position:relative;z-index:1;max-width:660px;margin:0;color:rgba(255,255,255,.82);font-size:14px;line-height:1.7;}
+      .ktvdi-section-note {font-size:13px;opacity:.72;margin-top:-8px;margin-bottom:16px;}
+      @media(max-width:640px){.block-container{padding-left:1rem !important;padding-right:1rem !important;}.ktvdi-brand{padding:10px 11px;gap:9px;}.ktvdi-logo{width:39px;height:39px;font-size:22px;border-radius:11px;}.ktvdi-hero{padding:23px 20px;border-radius:17px;}[data-testid="stMetric"]{padding:12px;}}
     </style>
     """, unsafe_allow_html=True)
 
@@ -1442,7 +1467,27 @@ def display_chatbot_page():
 display_sidebar()
 
 if st.session_state.halaman == "beranda":
+    st.markdown(
+        '<section class="ktvdi-hero">'
+        '<div class="ktvdi-hero-kicker">Komunitas • Informasi • Kolaborasi</div>'
+        '<div class="ktvdi-hero-title">Jelajahi Siaran TV Digital Indonesia</div>'
+        '<p class="ktvdi-hero-copy">Temukan informasi kanal DVB-T2, wilayah layanan, dan penyelenggara MUX. '
+        'Bantu komunitas menjaga data siaran tetap akurat dan terkini.</p>'
+        '</section>', unsafe_allow_html=True,
+    )
     st.header("📺 Data Siaran TV Digital di Indonesia")
+    st.markdown('<p class="ktvdi-section-note">Pilih wilayah untuk melihat daftar MUX dan kanal yang tersedia.</p>', unsafe_allow_html=True)
+    try:
+        overview_rows = get_all_broadcast_rows()
+        overview_provinces = len({row["provinsi"] for row in overview_rows})
+        overview_channels = sum(len(row["siaran"]) for row in overview_rows)
+        overview_mux = len(overview_rows)
+        metric_cols = st.columns(3)
+        metric_cols[0].metric("Provinsi terdata", overview_provinces)
+        metric_cols[1].metric("MUX terdata", overview_mux)
+        metric_cols[2].metric("Kanal terdata", overview_channels)
+    except Exception:
+        pass
     quick1, quick2, quick3 = st.columns(3)
     if quick1.button("🔎 Pencarian Global", use_container_width=True):
         switch_page("search"); st.rerun()

@@ -666,6 +666,73 @@ def display_broadcast_map():
                     "Perangkat": m.get("device_type", "-")
                 } for m in filtered[:100]]
                 st.dataframe(pd.DataFrame(table_rows), use_container_width=True, hide_index=True)
+
+                # Penghapusan pengukuran hanya dapat dilakukan oleh admin.
+                if admin_can_manage:
+                    st.markdown("#### 🗑️ Kelola laporan sinyal (Admin)")
+                    st.caption("Pilih laporan yang akan dihapus. Penghapusan bersifat permanen.")
+                    for measurement in filtered:
+                        measurement_id = measurement.get("id")
+                        if not measurement_id:
+                            continue
+
+                        report_label = (
+                            f"{measurement.get('timestamp', '-')}"
+                            f" — {measurement.get('display_name', measurement.get('username', 'Pengguna'))}"
+                            f" — Strength {measurement.get('strength', '-') }%"
+                            f" / Quality {measurement.get('quality', '-') }%"
+                        )
+                        with st.expander(report_label):
+                            st.write(
+                                f"**MUX:** {measurement.get('mux', '-')}"
+                                f"  \n**Wilayah:** {measurement.get('wilayah', '-')}, "
+                                f"{measurement.get('provinsi', '-')}"
+                            )
+                            st.write(
+                                f"**SNR:** {measurement.get('snr', '-')}"
+                                f" dB  |  **BER:** {measurement.get('ber', '-')}"
+                            )
+                            st.write(
+                                f"**Antena:** {measurement.get('antenna_type', '-')}"
+                                f"  |  **Perangkat:** {measurement.get('device_type', '-')}"
+                            )
+                            if measurement.get("notes"):
+                                st.write(f"**Catatan:** {measurement.get('notes')}")
+
+                            confirm_key = f"confirm_delete_signal_{measurement_id}"
+                            confirmed = st.checkbox(
+                                "Saya yakin ingin menghapus laporan sinyal ini",
+                                key=confirm_key
+                            )
+                            if st.button(
+                                "🗑️ Hapus laporan ini",
+                                key=f"delete_signal_{measurement_id}",
+                                type="primary",
+                                disabled=not confirmed
+                            ):
+                                try:
+                                    report_path = (
+                                        f"signal_measurements/{measurement['provinsi']}/"
+                                        f"{measurement['wilayah']}/{measurement['mux']}/"
+                                        f"{measurement_id}"
+                                    )
+                                    db.reference(report_path).delete()
+
+                                    # Simpan jejak penghapusan terpisah dari audit data siaran.
+                                    db.reference("signal_measurement_audit_logs").push().set({
+                                        "action": "delete_signal_measurement",
+                                        "measurement_id": measurement_id,
+                                        "provinsi": measurement.get("provinsi", ""),
+                                        "wilayah": measurement.get("wilayah", ""),
+                                        "mux": measurement.get("mux", ""),
+                                        "deleted_by": st.session_state.get("username", ""),
+                                        "deleted_at": datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB"),
+                                        "before": measurement
+                                    })
+                                    st.success("Laporan pengukuran sinyal berhasil dihapus.")
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(f"Gagal menghapus laporan sinyal: {exc}")
             else:
                 st.info("Belum ada laporan untuk MUX terpilih.")
         else:

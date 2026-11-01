@@ -306,11 +306,67 @@ def display_notifications():
         st.divider()
 
 
+def _uhf_frequency_mhz(mux_name):
+    """Perkiraan frekuensi tengah kanal UHF DVB-T2 (kanal 21 mulai 474 MHz, lebar 8 MHz)."""
+    match = re.search(r"\bUHF\s*(\d{1,3})\b", str(mux_name), re.IGNORECASE)
+    if not match:
+        return None
+    channel = int(match.group(1))
+    if not 21 <= channel <= 48:
+        return None
+    return 474.0 + (channel - 21) * 8.0
+
+
+def _haversine_km(lat1, lon1, lat2, lon2):
+    """Jarak permukaan bumi dalam kilometer."""
+    from math import radians, sin, cos, asin, sqrt
+    radius_km = 6371.0088
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    return 2 * radius_km * asin(sqrt(min(1, a)))
+
+
+def _load_signal_measurements():
+    """Ambil seluruh pengukuran komunitas dari Firebase."""
+    raw = db.reference("signal_measurements").get() or {}
+    records = []
+    for provinsi, areas in raw.items():
+        for wilayah, muxes in (areas or {}).items():
+            for mux, entries in (muxes or {}).items():
+                for measurement_id, item in (entries or {}).items():
+                    if not isinstance(item, dict):
+                        continue
+                    try:
+                        lat, lon = float(item["latitude"]), float(item["longitude"])
+                        if -11 <= lat <= 6 and 95 <= lon <= 141:
+                            records.append({
+                                **item, "id": measurement_id, "provinsi": provinsi,
+                                "wilayah": wilayah, "mux": mux,
+                                "latitude": lat, "longitude": lon
+                            })
+                    except (KeyError, TypeError, ValueError):
+                        continue
+    records.sort(key=lambda x: str(x.get("timestamp", "")), reverse=True)
+    return records
+
+
 def display_broadcast_map():
     if st.button("⬅️ Kembali ke Beranda", key="back_broadcast_map"):
         switch_page("beranda"); st.rerun()
-    st.header("🗺️ Peta Pemancar TV Digital")
-    st.write("Klik penanda untuk melihat nama wilayah layanan dan nama MUX. Untuk menambahkan atau mengubah titik, pilih MUX lalu geser peta sampai tanda bidik di tengah tepat berada di lokasi pemancar.")
+
+    st.header("🗺️ Peta Pemancar & Kualitas Sinyal TV Digital")
+    st.markdown(
+        "Peta ini menggabungkan **lokasi pemancar**, **estimasi propagasi sederhana**, "
+        "dan **hasil pengukuran aktual yang dilaporkan pengguna dari menu TV/STB**."
+    )
+    st.warning(
+        "Catatan akurasi: browser Streamlit tidak dapat membaca tuner DVB-T2 secara langsung. "
+        "Nilai Strength/Quality/SNR/BER harus dimasukkan dari layar informasi sinyal TV/STB. "
+        "Estimasi di bawah adalah model ruang bebas (tanpa kontur, gedung, interferensi, "
+        "arah antena, dan rugi kabel), bukan prediksi cakupan resmi."
+    )
+
     rows = get_all_broadcast_rows()
     located = []
     for r in rows:
@@ -319,8 +375,9 @@ def display_broadcast_map():
             if -11 <= lat <= 6 and 95 <= lon <= 141:
                 located.append({**r, "latitude": lat, "longitude": lon})
         except (TypeError, ValueError, KeyError):
-            pass
+            continue
 
+    measurements = _load_signal_measurements()
     try:
         import folium
         from streamlit_folium import st_folium
@@ -330,119 +387,126 @@ def display_broadcast_map():
             center_lat = sum(r["latitude"] for r in located) / len(located)
             center_lon = sum(r["longitude"] for r in located) / len(located)
             zoom = 6
+        elif measurements:
+            center_lat = sum(r["latitude"] for r in measurements) / len(measurements)
+            center_lon = sum(r["longitude"] for r in measurements) / len(measurements)
+            zoom = 7
         else:
             center_lat, center_lon, zoom = -2.5, 118.0, 5
 
         logged_in = bool(st.session_state.get("login"))
         admin_can_manage = logged_in and is_admin()
-        selected_idx = None
         selected_row = None
         labels = [f"{r.get('provinsi', '')} / {r.get('wilayah', '')} / {r.get('mux', '')}" for r in rows]
         if logged_in and rows:
             selected_idx = st.selectbox(
-                "Pilih MUX yang titik lokasinya akan ditambahkan atau dikelola",
-                range(len(rows)), format_func=lambda i: labels[i], key="map_mux_to_position"
+                "Pilih MUX", range(len(rows)),
+                format_func=lambda i: labels[i], key="map_mux_to_position"
             )
             selected_row = rows[selected_idx]
-            has_selected_location = selected_row.get("latitude") is not None and selected_row.get("longitude") is not None
-            if has_selected_location:
+            if selected_row.get("latitude") is not None and selected_row.get("longitude") is not None:
                 try:
-                    center_lat = float(selected_row["latitude"])
-                    center_lon = float(selected_row["longitude"])
+                    center_lat, center_lon = float(selected_row["latitude"]), float(selected_row["longitude"])
                 except (TypeError, ValueError):
                     pass
             if admin_can_manage:
-                st.info("Mode admin: geser peta hingga tanda bidik berada di lokasi yang benar. Admin dapat menambahkan, memindahkan, dan menghapus titik pemancar.")
-            elif has_selected_location:
-                st.info("Titik untuk MUX ini sudah tersedia. Pengguna dapat menambahkan titik baru untuk MUX yang belum memiliki lokasi; mengubah atau menghapus titik hanya dapat dilakukan admin.")
+                st.info("Admin dapat mengelola koordinat pemancar. Semua pengguna yang login dapat mengirim hasil pengukuran sinyal.")
             else:
-                st.info("Geser peta hingga tanda bidik berada di lokasi pemancar, lalu simpan titik. Pengguna yang login hanya dapat menambahkan titik yang belum tersedia.")
+                st.info("Anda dapat melaporkan hasil pengukuran untuk MUX terpilih. Koordinat laporan diambil dari posisi tengah peta; gunakan tombol GPS untuk menuju lokasi Anda.")
         elif not logged_in:
-            st.caption("Login diperlukan untuk menambahkan titik pemancar. Semua pengunjung tetap dapat melihat peta.")
+            st.caption("Peta dapat dilihat tanpa login. Login diperlukan untuk mengirim laporan pengukuran.")
         else:
-            st.info("Belum ada data siaran yang dapat dipasangi titik pemancar.")
+            st.info("Belum ada data MUX. Tambahkan data siaran terlebih dahulu.")
 
-        # Pilihan layer peta: jalan (OpenStreetMap) dan citra satelit (Esri World Imagery).
-        fmap = folium.Map(
-            location=[center_lat, center_lon],
-            zoom_start=zoom,
-            control_scale=True,
-            tiles=None,
-        )
-        folium.TileLayer(
-            tiles="OpenStreetMap",
-            name="Peta Jalan",
-            overlay=False,
-            control=True,
-            show=True,
-        ).add_to(fmap)
+        fmap = folium.Map(location=[center_lat, center_lon], zoom_start=zoom, control_scale=True, tiles=None)
+        folium.TileLayer("OpenStreetMap", name="Peta Jalan", overlay=False, control=True, show=True).add_to(fmap)
         folium.TileLayer(
             tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
             attr="Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
-            name="Satelit",
-            overlay=False,
-            control=True,
-            show=False,
+            name="Satelit", overlay=False, control=True, show=False
         ).add_to(fmap)
         folium.LayerControl(collapsed=False, position="topright").add_to(fmap)
 
-        # Tombol GPS: browser meminta izin lokasi kepada pengguna saat tombol ditekan.
-        # Lokasi hanya digunakan untuk memusatkan peta dan tidak disimpan ke Firebase.
         try:
             from folium.plugins import LocateControl
             LocateControl(
-                auto_start=False,
-                position="topleft",
+                auto_start=False, position="topleft",
                 strings={"title": "Tampilkan lokasi GPS saya"},
-                flyTo=True,
-                keepCurrentZoomLevel=False,
-                showPopup=False,
+                flyTo=True, keepCurrentZoomLevel=False, showPopup=False
             ).add_to(fmap)
         except (ImportError, AttributeError):
-            st.caption("Kontrol GPS tidak tersedia pada versi Folium yang terpasang. Perbarui Folium untuk mengaktifkannya.")
+            st.caption("Kontrol GPS tidak tersedia. Perbarui Folium.")
 
+        # Penanda lokasi pemancar.
         for r in located:
             mux = html.escape(str(r.get("mux", "")))
             wilayah = html.escape(str(r.get("wilayah", "")))
-            popup_html = f"""<div style='font-family:Arial,sans-serif;min-width:180px'>
-                <b>Wilayah Layanan:</b> {wilayah}<br>
-                <b>Nama MUX:</b> {mux}
-            </div>"""
+            popup_html = (
+                f"<b>Wilayah:</b> {wilayah}<br><b>MUX:</b> {mux}<br>"
+                f"<b>Koordinat:</b> {r['latitude']:.5f}, {r['longitude']:.5f}"
+            )
             folium.Marker(
-                location=[r["latitude"], r["longitude"]],
-                tooltip="Klik untuk melihat wilayah layanan dan MUX",
-                popup=folium.Popup(popup_html, max_width=260),
-                icon=folium.Icon(color="red", icon="broadcast-tower", prefix="fa")
+                [r["latitude"], r["longitude"]],
+                tooltip=f"Pemancar: {mux}",
+                popup=folium.Popup(popup_html, max_width=280),
+                icon=folium.Icon(color="red", icon="tower-broadcast", prefix="fa")
+            ).add_to(fmap)
+
+        # Pengukuran aktual: warna mengikuti nilai Quality yang dilaporkan.
+        for m in measurements[:500]:
+            quality = m.get("quality")
+            try:
+                q = float(quality)
+                color = "green" if q >= 70 else ("orange" if q >= 40 else "red")
+            except (TypeError, ValueError):
+                color = "blue"
+            popup = (
+                f"<b>Pengukuran pengguna</b><br>MUX: {html.escape(str(m.get('mux', '')))}"
+                f"<br>Wilayah: {html.escape(str(m.get('wilayah', '')))}"
+                f"<br>Strength: {html.escape(str(m.get('strength', '-')))}%"
+                f"<br>Quality: {html.escape(str(m.get('quality', '-')))}%"
+                f"<br>SNR: {html.escape(str(m.get('snr', '-')))} dB"
+                f"<br>Waktu: {html.escape(str(m.get('timestamp', '-')))}"
+            )
+            folium.CircleMarker(
+                [m["latitude"], m["longitude"]], radius=7, color=color,
+                fill=True, fill_opacity=0.75,
+                tooltip=f"Laporan {m.get('mux', '')}: Quality {m.get('quality', '-')}%",
+                popup=folium.Popup(popup, max_width=300)
             ).add_to(fmap)
 
         if logged_in and selected_row is not None:
-            # Fixed crosshair stays in the center of the map viewport while the map is panned.
             crosshair = """<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;pointer-events:none;color:#1769aa;font-size:30px;font-weight:bold;text-shadow:0 0 3px white,0 0 5px white">⊕</div>"""
             fmap.get_root().html.add_child(folium.Element(crosshair))
 
         map_result = st_folium(
             fmap, width=None, height=560, use_container_width=True,
-            key="digital_transmitter_map", returned_objects=["center", "zoom"]
+            key="digital_transmitter_map",
+            returned_objects=["center", "zoom"]
         )
-        st.caption(f"Menampilkan {len(located)} titik pemancar dengan koordinat tersimpan. Klik penanda untuk melihat nama wilayah layanan dan nama MUX.")
+        st.caption(
+            f"{len(located)} lokasi pemancar • {len(measurements)} laporan pengukuran. "
+            "Titik merah = pemancar; lingkaran = laporan pengukuran (hijau/kuning/merah berdasarkan Quality)."
+        )
+
+        current_center = (map_result or {}).get("center") or {"lat": center_lat, "lng": center_lon}
+        try:
+            target_lat = float(current_center.get("lat", center_lat))
+            target_lon = float(current_center.get("lng", center_lon))
+        except (TypeError, ValueError, AttributeError):
+            target_lat, target_lon = center_lat, center_lon
 
         if logged_in and selected_row is not None:
-            current_center = (map_result or {}).get("center") or {"lat": center_lat, "lng": center_lon}
-            try:
-                target_lat = float(current_center.get("lat", center_lat))
-                target_lon = float(current_center.get("lng", center_lon))
-            except (TypeError, ValueError, AttributeError):
-                target_lat, target_lon = center_lat, center_lon
-            st.write(f"**Lokasi bidik:** {target_lat:.6f}, {target_lon:.6f}")
-            has_saved_location = bool(selected_row.get("latitude") is not None and selected_row.get("longitude") is not None)
-            can_add_location = not has_saved_location
-            can_save_location = admin_can_manage or can_add_location
+            st.subheader("📍 Kelola koordinat pemancar")
+            st.caption(f"Posisi tengah peta: {target_lat:.6f}, {target_lon:.6f}")
+            has_saved_location = selected_row.get("latitude") is not None and selected_row.get("longitude") is not None
+            can_save_location = admin_can_manage or not has_saved_location
             save_label = "💾 Simpan posisi pemancar" if admin_can_manage else "📍 Tambahkan titik pemancar"
             if st.button(save_label, key="save_map_center_point", disabled=not can_save_location):
                 if not (-11 <= target_lat <= 6 and 95 <= target_lon <= 141):
-                    st.error("Titik berada di luar rentang wilayah Indonesia. Geser peta ke lokasi di Indonesia.")
+                    st.error("Titik berada di luar rentang wilayah Indonesia.")
                 elif has_saved_location and not admin_can_manage:
-                    st.error("Titik untuk MUX ini sudah ada. Hanya admin yang dapat mengubah posisinya.")
+                    st.error("Hanya admin yang dapat mengubah titik yang sudah ada.")
                 else:
                     r = selected_row
                     ref = db.reference(f"siaran/{r['provinsi']}/{r['wilayah']}/{r['mux']}")
@@ -451,35 +515,170 @@ def display_broadcast_map():
                         before = {"siaran": before}
                     updated = {**(before or {}), "latitude": target_lat, "longitude": target_lon}
                     ref.set(updated)
-                    action = "update_coordinates" if has_saved_location else "add_coordinates"
-                    write_audit_log(action, r["provinsi"], r["wilayah"], r["mux"], before=before, after=updated)
-                    st.success(f"Lokasi untuk {r['mux']} — {r['wilayah']} berhasil disimpan.")
+                    write_audit_log(
+                        "update_coordinates" if has_saved_location else "add_coordinates",
+                        r["provinsi"], r["wilayah"], r["mux"], before=before, after=updated
+                    )
+                    st.success("Koordinat pemancar berhasil disimpan.")
                     st.rerun()
 
             if admin_can_manage:
                 confirm_delete = st.checkbox(
-                    f"Saya yakin ingin menghapus titik peta untuk {selected_row.get('mux', 'MUX')} — {selected_row.get('wilayah', '')}",
-                    key="confirm_delete_transmitter_location",
-                    disabled=not has_saved_location,
+                    f"Saya yakin ingin menghapus titik peta untuk {selected_row.get('mux', 'MUX')}",
+                    key="confirm_delete_transmitter_location", disabled=not has_saved_location
                 )
-                if st.button("🗑️ Hapus titik pemancar dari peta", key="delete_transmitter_location", disabled=(not has_saved_location or not confirm_delete)):
+                if st.button("🗑️ Hapus titik pemancar", key="delete_transmitter_location",
+                             disabled=(not has_saved_location or not confirm_delete)):
                     r = selected_row
                     ref = db.reference(f"siaran/{r['provinsi']}/{r['wilayah']}/{r['mux']}")
                     before = ref.get()
                     if isinstance(before, list):
                         before = {"siaran": before}
-                    if not isinstance(before, dict):
-                        before = {}
+                    before = before if isinstance(before, dict) else {}
                     updated = {k: v for k, v in before.items() if k not in {"latitude", "longitude"}}
                     ref.set(updated)
                     write_audit_log("delete_coordinates", r["provinsi"], r["wilayah"], r["mux"], before=before, after=updated)
-                    st.success(f"Titik pemancar {r['mux']} — {r['wilayah']} berhasil dihapus dari peta. Data siaran tetap tersimpan.")
+                    st.success("Titik pemancar dihapus; data kanal tetap tersimpan.")
                     st.rerun()
+
+        # Estimasi: gunakan jarak, frekuensi kanal UHF, dan ERP yang diisi pengguna.
+        st.subheader("📡 Estimasi level sinyal di lokasi peta")
+        if located:
+            candidates = []
+            for tx in located:
+                dist = _haversine_km(target_lat, target_lon, tx["latitude"], tx["longitude"])
+                freq = _uhf_frequency_mhz(tx.get("mux", ""))
+                if freq:
+                    candidates.append((dist, tx, freq))
+            if candidates:
+                candidates.sort(key=lambda item: item[0])
+                distance_km, nearest_tx, frequency_mhz = candidates[0]
+                c1, c2 = st.columns(2)
+                erp_watt = c1.number_input(
+                    "Asumsi ERP pemancar (Watt)", min_value=1.0, max_value=1000000.0,
+                    value=1000.0, step=100.0, key="map_est_erp"
+                )
+                extra_loss_db = c2.number_input(
+                    "Asumsi rugi tambahan (dB)", min_value=0.0, max_value=60.0,
+                    value=10.0, step=1.0, key="map_est_loss"
+                )
+                if distance_km < 0.05:
+                    distance_km = 0.05
+                # ERP dBm = 10log10(W*1000); FSPL(dB)=32.44+20log10(MHz)+20log10(km).
+                from math import log10
+                erp_dbm = 10 * log10(erp_watt * 1000.0) + 2.15  # ERP ke EIRP (dB)
+                fspl_db = 32.44 + 20 * log10(frequency_mhz) + 20 * log10(distance_km)
+                received_dbm = erp_dbm - fspl_db - extra_loss_db
+                st.metric("Perkiraan level daya terima", f"{received_dbm:.1f} dBm")
+                st.caption(
+                    f"Pemancar terdekat yang memiliki kanal UHF terbaca: {nearest_tx['mux']} "
+                    f"({nearest_tx['wilayah']}, {nearest_tx['provinsi']}); jarak garis lurus "
+                    f"{distance_km:.1f} km; frekuensi asumsi {frequency_mhz:.1f} MHz. "
+                    "ERP dan rugi tambahan adalah asumsi yang dapat diubah, bukan data resmi pemancar."
+                )
+            else:
+                st.info("Nomor kanal UHF tidak dapat dibaca dari nama MUX. Format yang didukung misalnya 'UHF 27 - Nama MUX'.")
+        else:
+            st.info("Belum ada koordinat pemancar. Tambahkan titik pemancar agar estimasi dapat dihitung.")
+
+        # Pengukuran aktual dari layar informasi sinyal pada perangkat TV/STB.
+        st.subheader("📝 Kirim pengukuran aktual dari TV/STB")
+        if not logged_in:
+            st.info("Login diperlukan untuk mengirim laporan pengukuran.")
+        elif selected_row is None:
+            st.info("Belum ada MUX yang dapat dipilih.")
+        else:
+            st.write(
+                "Buka menu *Informasi Sinyal* pada TV/STB ketika menonton kanal dari MUX ini, "
+                "lalu salin angka yang ditampilkan. Jangan menebak nilai yang tidak tersedia."
+            )
+            with st.form("signal_measurement_form", clear_on_submit=True):
+                st.caption(f"MUX terpilih: **{selected_row['mux']}** — {selected_row['wilayah']}, {selected_row['provinsi']}")
+                st.caption(f"Koordinat laporan mengikuti posisi tengah peta: {target_lat:.6f}, {target_lon:.6f}. Geser peta atau gunakan GPS terlebih dahulu.")
+                strength = st.number_input("Signal Strength (%)", min_value=0, max_value=100, value=0, step=1)
+                quality = st.number_input("Signal Quality (%)", min_value=0, max_value=100, value=0, step=1)
+                snr_input = st.text_input("SNR (dB), jika tersedia", placeholder="Contoh: 24.5")
+                ber_input = st.text_input("BER, jika tersedia", placeholder="Contoh: 0.000001")
+                antenna_type = st.selectbox("Jenis antena", ["Indoor", "Outdoor", "Outdoor + booster", "Tidak tahu"])
+                device_type = st.selectbox("Perangkat penerima", ["TV DVB-T2", "STB DVB-T2", "Lainnya"])
+                notes = st.text_input("Catatan (opsional)", max_chars=250)
+                submitted_measurement = st.form_submit_button("📤 Kirim hasil pengukuran")
+                if submitted_measurement:
+                    if not (-11 <= target_lat <= 6 and 95 <= target_lon <= 141):
+                        st.error("Koordinat laporan tidak valid untuk wilayah Indonesia.")
+                    else:
+                        try:
+                            snr_value = float(snr_input.replace(",", ".")) if snr_input.strip() else None
+                            if snr_value is not None and not -10 <= snr_value <= 60:
+                                raise ValueError("SNR harus berada pada rentang -10 sampai 60 dB.")
+                            ber_value = float(ber_input.replace(",", ".")) if ber_input.strip() else None
+                            if ber_value is not None and not 0 <= ber_value <= 1:
+                                raise ValueError("BER harus berada pada rentang 0 sampai 1.")
+                            now = datetime.now(WIB)
+                            username = st.session_state.username
+                            user_data = db.reference(f"users/{username}").get() or {}
+                            measurement = {
+                                "username": username,
+                                "display_name": user_data.get("nama", username),
+                                "latitude": target_lat,
+                                "longitude": target_lon,
+                                "strength": int(strength),
+                                "quality": int(quality),
+                                "snr": snr_value,
+                                "ber": ber_value,
+                                "antenna_type": antenna_type,
+                                "device_type": device_type,
+                                "notes": notes.strip(),
+                                "timestamp": now.strftime("%Y-%m-%d %H:%M:%S WIB"),
+                                "created_at": now.isoformat()
+                            }
+                            measurement_ref = db.reference(
+                                f"signal_measurements/{selected_row['provinsi']}/{selected_row['wilayah']}/{selected_row['mux']}"
+                            ).push()
+                            measurement_ref.set(measurement)
+                            st.success("Terima kasih! Hasil pengukuran berhasil dikirim dan ditampilkan pada peta.")
+                            st.rerun()
+                        except ValueError as e:
+                            st.error(f"Periksa nilai SNR/BER: {e}")
+                        except Exception as e:
+                            st.error(f"Gagal menyimpan pengukuran: {e}")
+
+        st.subheader("📋 Riwayat pengukuran komunitas")
+        if measurements:
+            filtered = [
+                m for m in measurements
+                if selected_row is None or (
+                    m.get("provinsi") == selected_row.get("provinsi")
+                    and m.get("wilayah") == selected_row.get("wilayah")
+                    and m.get("mux") == selected_row.get("mux")
+                )
+            ]
+            if filtered:
+                table_rows = [{
+                    "Waktu": m.get("timestamp", "-"),
+                    "MUX": m.get("mux", "-"),
+                    "Wilayah": m.get("wilayah", "-"),
+                    "Strength (%)": m.get("strength", "-"),
+                    "Quality (%)": m.get("quality", "-"),
+                    "SNR (dB)": m.get("snr", "-"),
+                    "BER": m.get("ber", "-"),
+                    "Antena": m.get("antenna_type", "-"),
+                    "Perangkat": m.get("device_type", "-")
+                } for m in filtered[:100]]
+                st.dataframe(pd.DataFrame(table_rows), use_container_width=True, hide_index=True)
+            else:
+                st.info("Belum ada laporan untuk MUX terpilih.")
+        else:
+            st.info("Belum ada laporan pengukuran. Jadilah kontributor pertama!")
+
     except ImportError:
         st.warning("Peta interaktif memerlukan paket `folium` dan `streamlit-folium`. Pasang dengan: `pip install folium streamlit-folium`.")
         if located:
-            st.dataframe(pd.DataFrame([{"Nama MUX": r.get("mux", ""), "Wilayah Layanan": r.get("wilayah", ""), "Latitude": r["latitude"], "Longitude": r["longitude"]} for r in located]), use_container_width=True, hide_index=True)
-
+            st.dataframe(pd.DataFrame([
+                {"MUX": r.get("mux", ""), "Wilayah": r.get("wilayah", ""),
+                 "Latitude": r["latitude"], "Longitude": r["longitude"]}
+                for r in located
+            ]), use_container_width=True, hide_index=True)
 
 def display_restore_history():
     """Pemulihan versi sebelumnya hanya untuk admin."""

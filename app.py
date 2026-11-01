@@ -509,11 +509,11 @@ def display_broadcast_map():
             crosshair = """<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;pointer-events:none;color:#1769aa;font-size:30px;font-weight:bold;text-shadow:0 0 3px white,0 0 5px white">⊕</div>"""
             fmap.get_root().html.add_child(folium.Element(crosshair))
 
-        # Buat ulang komponen saat radius berubah agar iframe Folium
-        # memuat geometri lingkaran terbaru setelah rerun dari st.slider.
+        # Pertahankan key yang stabil agar komponen peta tidak di-reset
+        # setiap kali Streamlit melakukan rerun akibat perubahan slider.
         map_result = st_folium(
-            fmap, width=None, height=560, use_container_width=True,
-            key=f"digital_transmitter_map_{coverage_radius_km}",
+            fmap, width=700, height=560, use_container_width=True,
+            key="digital_transmitter_map",
             returned_objects=["center", "zoom"]
         )
         st.caption(

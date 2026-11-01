@@ -1481,12 +1481,14 @@ if st.session_state.halaman == "beranda":
     try:
         overview_rows = get_all_broadcast_rows()
         overview_provinces = len({row["provinsi"] for row in overview_rows})
+        overview_areas = len({(row["provinsi"], row["wilayah"]) for row in overview_rows})
         overview_channels = sum(len(row["siaran"]) for row in overview_rows)
         overview_mux = len(overview_rows)
-        metric_cols = st.columns(3)
+        metric_cols = st.columns(4)
         metric_cols[0].metric("Provinsi terdata", overview_provinces)
-        metric_cols[1].metric("MUX terdata", overview_mux)
-        metric_cols[2].metric("Kanal terdata", overview_channels)
+        metric_cols[1].metric("Wilayah layanan", overview_areas)
+        metric_cols[2].metric("MUX terdata", overview_mux)
+        metric_cols[3].metric("Kanal terdata", overview_channels)
     except Exception:
         pass
     quick1, quick2, quick3 = st.columns(3)

@@ -6,3 +6,6 @@ google-generativeai
 pytz
 folium
 streamlit-folium
+numpy>=1.24
+rasterio>=1.3
+requests>=2.28

@@ -330,7 +330,7 @@ def _haversine_km(lat1, lon1, lat2, lon2):
 def _terrain_dem_coverage(located, center_lat, center_lon, radius_km=8.0,
                           erp_watt=1000.0, tx_height_m=30.0, rx_height_m=10.0,
                           extra_loss_db=4.0, max_transmitters=None):
-    """Buat coverage raster terrain-aware dari SRTM1 (~30 m).
+    """Buat coverage raster terrain-aware dari DEM MAPZEN (~30 m).
 
     Model ini memakai free-space spreading sebagai baseline ditambah difraksi
     knife-edge dari profil DEM (bukan FSPL murni). Bukan pengganti ITU-R P.1812/
@@ -513,7 +513,7 @@ def display_broadcast_map():
     st.warning(
         "Catatan akurasi: browser Streamlit tidak dapat membaca tuner DVB-T2 secara langsung. "
         "Nilai Strength/Quality/SNR/BER harus dimasukkan dari layar informasi sinyal TV/STB. "
-        "Lapisan prediksi menggunakan DEM SRTM1 sekitar 30 m dan aproksimasi difraksi terrain "
+        "Lapisan prediksi terrain lokal menggunakan DEM MAPZEN sekitar 30 m dan aproksimasi difraksi "
         "knife-edge. Ini bukan model resmi ITU-R P.1812/Longley-Rice; gedung, clutter, pola antena, "
         "interferensi, dan parameter teknis pemancar tetap perlu diverifikasi."
     )
@@ -534,47 +534,33 @@ def display_broadcast_map():
         from streamlit_folium import st_folium
         import html
 
-        if located:
-            # Defaultkan peta ke pemancar valid pertama, bukan rata-rata koordinat
-            # seluruh Indonesia yang bisa jatuh di area tanpa pemancar.
-            center_lat = located[0]["latitude"]
-            center_lon = located[0]["longitude"]
-            zoom = 9
-        elif measurements:
-            center_lat = sum(r["latitude"] for r in measurements) / len(measurements)
-            center_lon = sum(r["longitude"] for r in measurements) / len(measurements)
-            zoom = 7
-        else:
-            center_lat, center_lon, zoom = -2.5, 118.0, 5
-
+        # Tampilan awal selalu nasional agar pengguna tidak hanya melihat satu MUX.
+        center_lat, center_lon, zoom = -2.5, 118.0, 5
         logged_in = bool(st.session_state.get("login"))
         admin_can_manage = logged_in and is_admin()
         selected_row = None
-        labels = [f"{r.get('provinsi', '')} / {r.get('wilayah', '')} / {r.get('mux', '')}" for r in rows]
-        if rows:
-            # Pemilihan MUX dibuka untuk semua pengguna agar coverage dapat
-            # dihitung di sekitar pemancar yang dipilih, bukan titik tengah nasional.
+        terrain_layers = []
+        map_mode = st.radio(
+            "Tampilan peta", ["Seluruh Indonesia", "Pemancar terpilih"],
+            horizontal=True, key="broadcast_map_mode"
+        )
+        if map_mode == "Pemancar terpilih" and located:
+            labels = [f"{r.get('provinsi', '')} / {r.get('wilayah', '')} / {r.get('mux', '')}" for r in located]
             selected_idx = st.selectbox(
-                "Pilih MUX / pemancar untuk pusat peta", range(len(rows)),
+                "Pilih MUX / pemancar", range(len(located)),
                 format_func=lambda i: labels[i], key="map_mux_to_position"
             )
-            selected_row = rows[selected_idx]
-            if selected_row.get("latitude") is not None and selected_row.get("longitude") is not None:
-                try:
-                    center_lat, center_lon = float(selected_row["latitude"]), float(selected_row["longitude"])
-                    zoom = 9
-                except (TypeError, ValueError):
-                    pass
-            if admin_can_manage:
-                st.info("Admin dapat mengelola koordinat pemancar. Semua pengguna yang login dapat mengirim hasil pengukuran sinyal.")
-            elif logged_in:
-                st.info("Anda dapat melaporkan hasil pengukuran untuk MUX terpilih. Koordinat laporan diambil dari posisi tengah peta; gunakan tombol GPS untuk menuju lokasi Anda.")
-            else:
-                st.caption("Peta dan pemilihan pemancar dapat digunakan tanpa login. Login diperlukan untuk mengirim laporan pengukuran.")
-        elif not logged_in:
-            st.caption("Peta dapat dilihat tanpa login. Login diperlukan untuk mengirim laporan pengukuran.")
+            selected_row = located[selected_idx]
+            center_lat, center_lon = selected_row["latitude"], selected_row["longitude"]
+            zoom = 9
+        elif map_mode == "Pemancar terpilih" and not located:
+            st.warning("Belum ada pemancar dengan koordinat valid.")
+        if admin_can_manage:
+            st.info("Admin dapat mengelola koordinat pemancar. Semua pengguna yang login dapat mengirim hasil pengukuran sinyal.")
+        elif logged_in:
+            st.info("Pilih mode Pemancar terpilih untuk melaporkan pengukuran pada satu MUX. Gunakan kontrol GPS untuk menuju lokasi Anda.")
         else:
-            st.info("Belum ada data MUX. Tambahkan data siaran terlebih dahulu.")
+            st.caption("Peta dan sebaran pemancar dapat dilihat tanpa login. Login diperlukan untuk mengirim laporan pengukuran.")
 
         fmap = folium.Map(location=[center_lat, center_lon], zoom_start=zoom, control_scale=True, tiles=None)
         folium.TileLayer("OpenStreetMap", name="Peta Jalan", overlay=False, control=True, show=True).add_to(fmap)
@@ -583,33 +569,73 @@ def display_broadcast_map():
             attr="Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
             name="Satelit", overlay=False, control=True, show=False
         ).add_to(fmap)
-        # Prediksi coverage topografi: hitung DEM 30 m di sekitar lokasi peta.
-        st.subheader("⛰️ Coverage topografi (DEM 30 m)")
-        cov1, cov2, cov3, cov4 = st.columns(4)
-        coverage_radius = cov1.slider("Radius coverage (km)", 2, 9, 8, key="terrain_cov_radius")
-        coverage_erp = cov2.number_input("ERP asumsi (W)", 1.0, 1000000.0, 1000.0, 100.0, key="terrain_cov_erp")
-        tx_height = cov3.number_input("Tinggi antena TX (m)", 1.0, 300.0, 30.0, 1.0, key="terrain_tx_height")
-        rx_height = cov4.number_input("Tinggi antena RX (m)", 1.0, 30.0, 10.0, 1.0, key="terrain_rx_height")
-        terrain_layers = []
-        if located and st.checkbox("Tampilkan prediksi terrain per pemancar", value=True, key="show_terrain_coverage"):
-            try:
-                with st.spinner("Mengambil DEM SRTM1 dan menghitung difraksi terrain 30 m..."):
-                    terrain_layers = _terrain_dem_coverage(
-                        located, center_lat, center_lon, radius_km=coverage_radius,
-                        erp_watt=coverage_erp, tx_height_m=tx_height, rx_height_m=rx_height,
-                        extra_loss_db=4.0
-                    )
-                for layer in terrain_layers:
-                    folium.raster_layers.ImageOverlay(
-                        image=layer["image"], bounds=layer["bounds"],
-                        opacity=0.62, name=f"Coverage: {layer['name']}",
-                        interactive=True, cross_origin=False, zindex=2
+        st.subheader("📡 Heatmap sebaran dan jangkauan pemancar")
+        if map_mode == "Seluruh Indonesia":
+            national_radius = st.slider(
+                "Radius jangkauan indikatif per pemancar (km)", 2, 40, 15,
+                key="national_coverage_radius"
+            )
+            show_national_heat = st.checkbox(
+                "Tampilkan heatmap jangkauan seluruh pemancar", value=True,
+                key="show_national_coverage_heatmap"
+            )
+            if located and show_national_heat:
+                # Heatmap dibentuk dari titik sampel di sekitar setiap pemancar.
+                # Ini visualisasi sebaran jangkauan indikatif, bukan prediksi RF/terrain.
+                from folium.plugins import HeatMap
+                import math
+                heat_points = []
+                rings = [(0.0, 1.0), (0.35, 0.82), (0.70, 0.55), (1.0, 0.28)]
+                bearings = range(0, 360, 45)
+                for tx in located:
+                    lat0, lon0 = tx["latitude"], tx["longitude"]
+                    heat_points.append([lat0, lon0, 1.0])
+                    for fraction, weight in rings[1:]:
+                        distance_km = national_radius * fraction
+                        for bearing in bearings:
+                            angle = math.radians(bearing)
+                            dlat = (distance_km * math.cos(angle)) / 111.32
+                            denom = max(20.0, 111.32 * math.cos(math.radians(lat0)))
+                            dlon = (distance_km * math.sin(angle)) / denom
+                            sample_lat, sample_lon = lat0 + dlat, lon0 + dlon
+                            if -11 <= sample_lat <= 6 and 95 <= sample_lon <= 141:
+                                heat_points.append([sample_lat, sample_lon, weight])
+                if heat_points:
+                    HeatMap(
+                        heat_points, name="Heatmap jangkauan indikatif nasional",
+                        min_opacity=0.18, radius=18, blur=22, max_zoom=7,
+                        gradient={0.2: "blue", 0.45: "cyan", 0.65: "lime", 0.85: "yellow", 1.0: "red"}
                     ).add_to(fmap)
-                if terrain_layers:
-                    st.caption("Raster dihitung pada grid 30 m; warna bergerak dari merah (lebih lemah) ke hijau (lebih kuat). "
-                               "Hanya pemancar yang kanal UHF-nya dapat dikenali dan berada dalam daftar terdekat yang dihitung.")
-            except Exception as terrain_error:
-                st.warning(f"Coverage topografi belum dapat dihitung: {terrain_error}. Pastikan paket DEM/GIS terpasang dan server dapat mengakses sumber SRTM.")
+                st.caption(
+                    f"Heatmap merangkum {len(located)} pemancar berkoordinat dengan radius indikatif {national_radius} km. "
+                    "Area yang bertumpuk tampak lebih pekat. Ini bukan prediksi jangkauan radio terukur dan belum memperhitungkan ERP, antena, bukit, gedung, atau interferensi."
+                )
+            elif not located:
+                st.warning("Belum ada data pemancar dengan koordinat valid untuk dibuat heatmap nasional.")
+        else:
+            st.subheader("⛰️ Prediksi terrain lokal (DEM 30 m)")
+            cov1, cov2, cov3, cov4 = st.columns(4)
+            coverage_radius = cov1.slider("Radius analisis (km)", 2, 9, 8, key="terrain_cov_radius")
+            coverage_erp = cov2.number_input("ERP asumsi (W)", 1.0, 1000000.0, 1000.0, 100.0, key="terrain_cov_erp")
+            tx_height = cov3.number_input("Tinggi antena TX (m)", 1.0, 300.0, 30.0, 1.0, key="terrain_tx_height")
+            rx_height = cov4.number_input("Tinggi antena RX (m)", 1.0, 30.0, 10.0, 1.0, key="terrain_rx_height")
+            if selected_row and st.checkbox("Tampilkan prediksi terrain pemancar terpilih", value=True, key="show_terrain_coverage"):
+                try:
+                    with st.spinner("Mengambil DEM MAPZEN dan menghitung difraksi terrain 30 m..."):
+                        terrain_layers = _terrain_dem_coverage(
+                            [selected_row], center_lat, center_lon, radius_km=coverage_radius,
+                            erp_watt=coverage_erp, tx_height_m=tx_height, rx_height_m=rx_height,
+                            extra_loss_db=4.0, max_transmitters=1
+                        )
+                    for layer in terrain_layers:
+                        folium.raster_layers.ImageOverlay(
+                            image=layer["image"], bounds=layer["bounds"],
+                            opacity=0.62, name=f"Prediksi terrain: {layer['name']}",
+                            interactive=True, cross_origin=False, zindex=2
+                        ).add_to(fmap)
+                    st.caption("Prediksi terrain lokal memakai DEM 30 m dan model difraksi sederhana; hasil indikatif, bukan pengukuran sinyal aktual.")
+                except Exception as terrain_error:
+                    st.warning(f"Coverage topografi belum dapat dihitung: {terrain_error}. Periksa dependensi GIS dan akses sumber DEM.")
         folium.LayerControl(collapsed=False, position="topright").add_to(fmap)
 
         try:
@@ -671,7 +697,7 @@ def display_broadcast_map():
         )
         st.caption(
             f"{len(located)} lokasi pemancar • {len(measurements)} laporan pengukuran. "
-            "Titik merah = pemancar; lingkaran = laporan pengukuran (hijau/kuning/merah berdasarkan Quality)."
+            "Titik merah = pemancar; warna heatmap = kepadatan jangkauan indikatif; lingkaran = laporan pengukuran aktual (hijau/kuning/merah berdasarkan Quality)."
         )
 
         current_center = (map_result or {}).get("center") or {"lat": center_lat, "lng": center_lon}

@@ -404,6 +404,11 @@ def _terrain_dem_coverage(located, center_lat, center_lon, radius_km=8.0,
                      t['latitude'], t['longitude']))
     if max_transmitters is not None:
         tx_list = tx_list[:int(max_transmitters)]
+    if not tx_list:
+        raise ValueError(
+            f"Tidak ada pemancar berkoordinat dalam radius {radius_km * 1.5:.1f} km dari pusat peta. "
+            "Pilih MUX yang memiliki koordinat pemancar."
+        )
     sample_fracs = np.linspace(0.04, 0.96, 24, dtype="float32")
 
     for tx in tx_list:
@@ -464,6 +469,11 @@ def _terrain_dem_coverage(located, center_lat, center_lon, radius_km=8.0,
             "max_dbm": float(np.nanpercentile(rx_dbm, 95)) if np.any(np.isfinite(rx_dbm)) else None,
             "frequency": freq
         })
+    if not outputs:
+        raise ValueError(
+            "Tidak ada kanal UHF yang dikenali. Format nama MUX harus memuat kanal "
+            "seperti 'UHF 27' (kanal 21–48)."
+        )
     return outputs
 
 
@@ -525,9 +535,11 @@ def display_broadcast_map():
         import html
 
         if located:
-            center_lat = sum(r["latitude"] for r in located) / len(located)
-            center_lon = sum(r["longitude"] for r in located) / len(located)
-            zoom = 6
+            # Defaultkan peta ke pemancar valid pertama, bukan rata-rata koordinat
+            # seluruh Indonesia yang bisa jatuh di area tanpa pemancar.
+            center_lat = located[0]["latitude"]
+            center_lon = located[0]["longitude"]
+            zoom = 9
         elif measurements:
             center_lat = sum(r["latitude"] for r in measurements) / len(measurements)
             center_lon = sum(r["longitude"] for r in measurements) / len(measurements)
@@ -539,21 +551,26 @@ def display_broadcast_map():
         admin_can_manage = logged_in and is_admin()
         selected_row = None
         labels = [f"{r.get('provinsi', '')} / {r.get('wilayah', '')} / {r.get('mux', '')}" for r in rows]
-        if logged_in and rows:
+        if rows:
+            # Pemilihan MUX dibuka untuk semua pengguna agar coverage dapat
+            # dihitung di sekitar pemancar yang dipilih, bukan titik tengah nasional.
             selected_idx = st.selectbox(
-                "Pilih MUX", range(len(rows)),
+                "Pilih MUX / pemancar untuk pusat peta", range(len(rows)),
                 format_func=lambda i: labels[i], key="map_mux_to_position"
             )
             selected_row = rows[selected_idx]
             if selected_row.get("latitude") is not None and selected_row.get("longitude") is not None:
                 try:
                     center_lat, center_lon = float(selected_row["latitude"]), float(selected_row["longitude"])
+                    zoom = 9
                 except (TypeError, ValueError):
                     pass
             if admin_can_manage:
                 st.info("Admin dapat mengelola koordinat pemancar. Semua pengguna yang login dapat mengirim hasil pengukuran sinyal.")
-            else:
+            elif logged_in:
                 st.info("Anda dapat melaporkan hasil pengukuran untuk MUX terpilih. Koordinat laporan diambil dari posisi tengah peta; gunakan tombol GPS untuk menuju lokasi Anda.")
+            else:
+                st.caption("Peta dan pemilihan pemancar dapat digunakan tanpa login. Login diperlukan untuk mengirim laporan pengukuran.")
         elif not logged_in:
             st.caption("Peta dapat dilihat tanpa login. Login diperlukan untuk mengirim laporan pengukuran.")
         else:

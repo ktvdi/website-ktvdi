@@ -467,12 +467,23 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         # Mask lagi di bawah ambang penerimaan yang diasumsikan.
         rx_dbm = np.where(rx_dbm >= float(rx_threshold_dbm), rx_dbm, np.nan)
 
-        clipped = np.clip((rx_dbm + 110.0) / 70.0, 0.0, 1.0)
+        # Klasifikasi warna berdasarkan margin daya terima terhadap ambang RX.
+        # Merah: lemah; kuning: sedang; hijau: kuat; biru: sangat kuat.
+        margin_db = rx_dbm - float(rx_threshold_dbm)
+        valid_signal = np.isfinite(rx_dbm)
         rgba = np.zeros((*rx_dbm.shape, 4), dtype=np.uint8)
-        rgba[..., 0] = np.clip(255*(1.0-clipped), 0, 255).astype("uint8")
-        rgba[..., 1] = np.clip(255*clipped, 0, 255).astype("uint8")
-        rgba[..., 2] = 40
-        rgba[..., 3] = np.where(np.isfinite(rx_dbm), 210, 0).astype("uint8")
+        color_bins = [
+            (margin_db < 6.0, (235, 35, 35)),       # Lemah
+            ((margin_db >= 6.0) & (margin_db < 15.0), (255, 220, 0)),  # Sedang
+            ((margin_db >= 15.0) & (margin_db < 25.0), (20, 180, 65)), # Kuat
+            (margin_db >= 25.0, (25, 105, 235)),    # Sangat kuat
+        ]
+        for condition, rgb in color_bins:
+            selected = valid_signal & condition
+            rgba[selected, 0] = rgb[0]
+            rgba[selected, 1] = rgb[1]
+            rgba[selected, 2] = rgb[2]
+        rgba[..., 3] = np.where(valid_signal, 220, 0).astype("uint8")
         west_ll, south_ll = from_utm.transform(xmin, tx_y-radius_m)
         east_ll, north_ll = from_utm.transform(tx_x+radius_m, ymax)
         outputs.append({
@@ -596,6 +607,20 @@ def display_broadcast_map():
                         opacity=0.90, name=f"Prediksi terrain: {layer['name']}",
                         interactive=True, cross_origin=False, zindex=2
                     ).add_to(fmap)
+                terrain_legend = """
+                <div style="position:fixed;bottom:24px;left:12px;z-index:9999;"
+                     background:rgba(255,255,255,.94);padding:9px 11px;border-radius:8px;
+                     box-shadow:0 1px 6px rgba(0,0,0,.28);font-size:11px;line-height:1.6;
+                     color:#222;">
+                  <div style="font-weight:700;margin-bottom:3px;">Prediksi kekuatan sinyal</div>
+                  <div><span style="display:inline-block;width:11px;height:11px;background:#eb2323;margin-right:6px;"></span>Merah — Lemah</div>
+                  <div><span style="display:inline-block;width:11px;height:11px;background:#ffdc00;margin-right:6px;"></span>Kuning — Sedang</div>
+                  <div><span style="display:inline-block;width:11px;height:11px;background:#14b441;margin-right:6px;"></span>Hijau — Kuat</div>
+                  <div><span style="display:inline-block;width:11px;height:11px;background:#1969eb;margin-right:6px;"></span>Biru — Sangat kuat</div>
+                  <div style="font-size:9px;color:#555;margin-top:3px;">Kelas berdasarkan margin terhadap ambang RX</div>
+                </div>
+                """
+                fmap.get_root().html.add_child(folium.Element(terrain_legend))
                 layer = terrain_layers[0]
                 st.caption(
                     f"Jangkauan maksimum indikatif: {layer['max_range_km']:.1f} km; "

@@ -607,6 +607,21 @@ def display_broadcast_map():
             except Exception as terrain_error:
                 st.warning(f"Coverage topografi belum dapat dihitung: {terrain_error}. Periksa dependensi GIS dan akses sumber DEM.")
         folium.LayerControl(collapsed=False, position="topright").add_to(fmap)
+        # Perkecil teks kontrol layer dan popup agar label prediksi terrain
+        # tidak mendominasi area peta, terutama pada layar ponsel.
+        map_text_css = """
+        <style>
+          .leaflet-control-layers,
+          .leaflet-control-layers label {
+            font-size: 10px !important;
+            line-height: 1.25 !important;
+          }
+          .leaflet-control-layers-list { margin: 4px 6px !important; }
+          .leaflet-popup-content { font-size: 11px !important; line-height: 1.35 !important; }
+          .leaflet-tooltip { font-size: 10px !important; }
+        </style>
+        """
+        fmap.get_root().header.add_child(folium.Element(map_text_css))
 
         try:
             from folium.plugins import LocateControl

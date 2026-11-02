@@ -362,17 +362,19 @@ def _terrain_dem_coverage(located, center_lat, center_lon, radius_km=8.0,
     ys = ymax - (np.arange(n) + 0.5) * cell
     xx, yy = np.meshgrid(xs, ys)
 
-    # SRTM1 tersedia pada sekitar 1 arc-second. Unduh/cache tile yang mencakup area.
+    # MAPZEN mempertahankan sumber DEM yang digunakan oleh elevation versi 1.x
+    # ketika produk bernama SRTM1; pada elevation 2.x nama produknya berubah.
     corners = [from_utm.transform(xmin, cy-radius_m), from_utm.transform(xmin, cy+radius_m),
                from_utm.transform(cx+radius_m, cy-radius_m), from_utm.transform(cx+radius_m, cy+radius_m)]
     west = min(v[0] for v in corners) - 0.01
     east = max(v[0] for v in corners) + 0.01
     south = min(v[1] for v in corners) - 0.01
     north = max(v[1] for v in corners) + 0.01
+    dem_product = "MAPZEN"
     dem_path = os.path.join(tempfile.gettempdir(),
-        f"ktvdi_srtm1_{round(center_lat,3)}_{round(center_lon,3)}_{int(radius_km)}.tif")
+        f"ktvdi_{dem_product.lower()}_v2_{round(center_lat,3)}_{round(center_lon,3)}_{int(radius_km)}.tif")
     if not os.path.exists(dem_path) or os.path.getsize(dem_path) < 1000:
-        elevation.clip(bounds=(west, south, east, north), output=dem_path, product="SRTM1")
+        elevation.clip(bounds=(west, south, east, north), output=dem_path, product=dem_product)
 
     with rasterio.open(dem_path) as src:
         dst_transform, width, height = calculate_default_transform(

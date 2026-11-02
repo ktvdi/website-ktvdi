@@ -636,12 +636,27 @@ def display_broadcast_map():
         # tidak mendominasi area peta, terutama pada layar ponsel.
         map_text_css = """
         <style>
-          .leaflet-control-layers,
+          .leaflet-control-layers {
+            width: 50% !important;
+            max-width: 50% !important;
+            box-sizing: border-box !important;
+          }
+          .leaflet-control-layers-expanded {
+            width: 50% !important;
+            max-width: 50% !important;
+            box-sizing: border-box !important;
+          }
           .leaflet-control-layers label {
             font-size: 10px !important;
             line-height: 1.25 !important;
+            white-space: normal !important;
           }
-          .leaflet-control-layers-list { margin: 4px 6px !important; }
+          .leaflet-control-layers-list {
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+            margin: 4px 0 !important;
+          }
           .leaflet-popup-content { font-size: 11px !important; line-height: 1.35 !important; }
           .leaflet-tooltip { font-size: 10px !important; }
         </style>

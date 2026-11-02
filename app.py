@@ -327,14 +327,33 @@ def _haversine_km(lat1, lon1, lat2, lon2):
     return 2 * radius_km * asin(sqrt(min(1, a)))
 
 
-def _terrain_dem_coverage(located, center_lat, center_lon, radius_km=8.0,
-                          erp_watt=1000.0, tx_height_m=30.0, rx_height_m=10.0,
-                          extra_loss_db=4.0, max_transmitters=None):
-    """Buat coverage raster terrain-aware dari DEM MAPZEN (~30 m).
+def _estimate_max_range_km(freq_mhz, erp_watt, tx_height_m, rx_height_m,
+                           rx_threshold_dbm=-90.0, extra_loss_db=4.0):
+    """Estimasi jarak maksimum indikatif dari link budget dan radio horizon.
 
-    Model ini memakai free-space spreading sebagai baseline ditambah difraksi
-    knife-edge dari profil DEM (bukan FSPL murni). Bukan pengganti ITU-R P.1812/
-    Longley-Rice; hasil bersifat indikatif dan sensitif terhadap parameter antena.
+    ERP dikonversi ke EIRP (ERP + 2.15 dB). Jarak dibatasi oleh
+    free-space link budget dan horizon radio efektif k=4/3. Ini batas
+    perencanaan, bukan jaminan penerimaan DVB-T2.
+    """
+    import math
+    eirp_dbm = 10.0 * math.log10(max(float(erp_watt), 0.001) * 1000.0) + 2.15
+    allowable_fspl = eirp_dbm - float(rx_threshold_dbm) - float(extra_loss_db)
+    fs_range_km = 10.0 ** ((allowable_fspl - 32.44 - 20.0 * math.log10(float(freq_mhz))) / 20.0)
+    radio_horizon_km = 4.12 * (math.sqrt(max(float(tx_height_m), 0.1)) +
+                               math.sqrt(max(float(rx_height_m), 0.1)))
+    return max(1.0, min(fs_range_km, radio_horizon_km)), fs_range_km, radio_horizon_km
+
+
+def _terrain_dem_coverage(located, center_lat, center_lon,
+                          erp_watt=1000.0, tx_height_m=30.0, rx_height_m=10.0,
+                          rx_threshold_dbm=-90.0, extra_loss_db=4.0,
+                          max_transmitters=1):
+    """Prediksi terrain sampai jarak maksimum hasil asumsi link budget.
+
+    DEM MAPZEN digunakan untuk profil elevasi dan difraksi knife-edge.
+    Resolusi raster adaptif agar area yang lebih luas tetap dapat diproses
+    pada Streamlit Community Cloud. Model ini indikatif, bukan ITU-R P.1812
+    atau Longley-Rice.
     """
     import os
     import tempfile
@@ -345,137 +364,127 @@ def _terrain_dem_coverage(located, center_lat, center_lon, radius_km=8.0,
     from pyproj import CRS, Transformer
     from scipy.ndimage import map_coordinates
 
-    # Peta cakupan lokal berpusat pada pemancar terpilih/area peta.
-    utm_zone = int((center_lon + 180) // 6) + 1
-    utm_epsg = (32700 if center_lat < 0 else 32600) + utm_zone
-    utm_crs = CRS.from_epsg(utm_epsg)
-    to_utm = Transformer.from_crs("EPSG:4326", utm_crs, always_xy=True)
-    from_utm = Transformer.from_crs(utm_crs, "EPSG:4326", always_xy=True)
-    cx, cy = to_utm.transform(center_lon, center_lat)
-    radius_m = float(radius_km) * 1000.0
-    cell = 30.0
-    n = int(np.ceil((2 * radius_m) / cell))
-    if n > 620:
-        raise ValueError("Area terlalu besar untuk raster 30 m. Kurangi radius cakupan (maksimum sekitar 9 km).")
-    xmin, ymax = cx - radius_m, cy + radius_m
-    xs = xmin + (np.arange(n) + 0.5) * cell
-    ys = ymax - (np.arange(n) + 0.5) * cell
-    xx, yy = np.meshgrid(xs, ys)
-
-    # MAPZEN mempertahankan sumber DEM yang digunakan oleh elevation versi 1.x
-    # ketika produk bernama SRTM1; pada elevation 2.x nama produknya berubah.
-    corners = [from_utm.transform(xmin, cy-radius_m), from_utm.transform(xmin, cy+radius_m),
-               from_utm.transform(cx+radius_m, cy-radius_m), from_utm.transform(cx+radius_m, cy+radius_m)]
-    west = min(v[0] for v in corners) - 0.01
-    east = max(v[0] for v in corners) + 0.01
-    south = min(v[1] for v in corners) - 0.01
-    north = max(v[1] for v in corners) + 0.01
-    dem_product = "MAPZEN"
-    dem_path = os.path.join(tempfile.gettempdir(),
-        f"ktvdi_{dem_product.lower()}_v2_{round(center_lat,3)}_{round(center_lon,3)}_{int(radius_km)}.tif")
-    if not os.path.exists(dem_path) or os.path.getsize(dem_path) < 1000:
-        elevation.clip(bounds=(west, south, east, north), output=dem_path, product=dem_product)
-
-    with rasterio.open(dem_path) as src:
-        dst_transform, width, height = calculate_default_transform(
-            src.crs, utm_crs, src.width, src.height,
-            *src.bounds, resolution=30
-        )
-        dem = np.full((height, width), np.nan, dtype="float32")
-        reproject(source=rasterio.band(src, 1), destination=dem,
-                  src_transform=src.transform, src_crs=src.crs, src_nodata=src.nodata,
-                  dst_transform=dst_transform, dst_crs=utm_crs,
-                  resampling=Resampling.bilinear, dst_nodata=np.nan)
-
-    inv = ~dst_transform
-    col, row = inv * (xx, yy)
-    dem_grid = map_coordinates(dem, [row, col], order=1, mode="nearest")
-    valid = np.isfinite(dem_grid) & (dem_grid > -500)
-    if not np.any(valid):
-        raise ValueError("DEM tidak mencakup area peta atau seluruh piksel DEM kosong.")
-
-    # Mask grid pada radius lingkaran dan hasil per pemancar.
-    radial_km = np.sqrt((xx-cx)**2 + (yy-cy)**2) / 1000.0
-    mask = valid & (radial_km <= radius_km)
-    outputs = []
-    nearby = [t for t in located if _haversine_km(center_lat, center_lon,
-               t['latitude'], t['longitude']) <= radius_km * 1.5]
-    tx_list = sorted(nearby, key=lambda t: _haversine_km(center_lat, center_lon,
-                     t['latitude'], t['longitude']))
+    tx_list = [t for t in located if _uhf_frequency_mhz(t.get("mux", ""))]
     if max_transmitters is not None:
         tx_list = tx_list[:int(max_transmitters)]
     if not tx_list:
-        raise ValueError(
-            f"Tidak ada pemancar berkoordinat dalam radius {radius_km * 1.5:.1f} km dari pusat peta. "
-            "Pilih MUX yang memiliki koordinat pemancar."
-        )
-    sample_fracs = np.linspace(0.04, 0.96, 24, dtype="float32")
+        raise ValueError("Tidak ada pemancar dengan kanal UHF 21–48 dan koordinat valid.")
 
+    outputs = []
     for tx in tx_list:
         freq = _uhf_frequency_mhz(tx.get("mux", ""))
-        if not freq:
-            continue
-        tx_x, tx_y = to_utm.transform(tx["longitude"], tx["latitude"])
+        max_range_km, fs_range_km, horizon_km = _estimate_max_range_km(
+            freq, erp_watt, tx_height_m, rx_height_m, rx_threshold_dbm, extra_loss_db
+        )
+        tx_lat, tx_lon = float(tx["latitude"]), float(tx["longitude"])
+        utm_zone = int((tx_lon + 180) // 6) + 1
+        utm_epsg = (32700 if tx_lat < 0 else 32600) + utm_zone
+        utm_crs = CRS.from_epsg(utm_epsg)
+        to_utm = Transformer.from_crs("EPSG:4326", utm_crs, always_xy=True)
+        from_utm = Transformer.from_crs(utm_crs, "EPSG:4326", always_xy=True)
+        tx_x, tx_y = to_utm.transform(tx_lon, tx_lat)
+        radius_m = max_range_km * 1000.0
+
+        # Batasi jumlah piksel, bukan jarak geografis. Resolusi otomatis
+        # menjadi lebih kasar untuk pemancar dengan jangkauan lebih luas.
+        target_max_side = 700
+        cell = max(30.0, (2.0 * radius_m) / target_max_side)
+        n = int(np.ceil((2.0 * radius_m) / cell))
+        xmin, ymax = tx_x - radius_m, tx_y + radius_m
+        xs = xmin + (np.arange(n) + 0.5) * cell
+        ys = ymax - (np.arange(n) + 0.5) * cell
+        xx, yy = np.meshgrid(xs, ys)
+        corners = [from_utm.transform(xmin, tx_y-radius_m),
+                   from_utm.transform(xmin, tx_y+radius_m),
+                   from_utm.transform(tx_x+radius_m, tx_y-radius_m),
+                   from_utm.transform(tx_x+radius_m, ymax)]
+        west = min(v[0] for v in corners) - 0.01
+        east = max(v[0] for v in corners) + 0.01
+        south = min(v[1] for v in corners) - 0.01
+        north = max(v[1] for v in corners) + 0.01
+
+        dem_product = "MAPZEN"
+        cache_key = (f"ktvdi_{dem_product.lower()}_terrain_{round(tx_lat,3)}_"
+                     f"{round(tx_lon,3)}_{int(round(max_range_km))}_{int(round(cell))}m.tif")
+        dem_path = os.path.join(tempfile.gettempdir(), cache_key)
+        if not os.path.exists(dem_path) or os.path.getsize(dem_path) < 1000:
+            elevation.clip(bounds=(west, south, east, north), output=dem_path,
+                           product=dem_product)
+
+        with rasterio.open(dem_path) as src:
+            dst_transform, width, height = calculate_default_transform(
+                src.crs, utm_crs, src.width, src.height, *src.bounds,
+                resolution=cell
+            )
+            dem = np.full((height, width), np.nan, dtype="float32")
+            reproject(source=rasterio.band(src, 1), destination=dem,
+                      src_transform=src.transform, src_crs=src.crs,
+                      src_nodata=src.nodata, dst_transform=dst_transform,
+                      dst_crs=utm_crs, resampling=Resampling.bilinear,
+                      dst_nodata=np.nan)
+
+        inv = ~dst_transform
+        col, row = inv * (xx, yy)
+        dem_grid = map_coordinates(dem, [row, col], order=1, mode="nearest")
+        valid = np.isfinite(dem_grid) & (dem_grid > -500)
+        radial_km = np.sqrt((xx-tx_x)**2 + (yy-tx_y)**2) / 1000.0
+        mask = valid & (radial_km <= max_range_km)
+        if not np.any(mask):
+            raise ValueError("DEM tidak mencakup area prediksi atau seluruh piksel DEM kosong.")
+
         tx_row, tx_col = inv * (tx_x, tx_y)
-        tx_ground = float(map_coordinates(dem, [[tx_row], [tx_col]], order=1,
-                                           mode="nearest")[0])
+        tx_ground = float(map_coordinates(dem, [[tx_row], [tx_col]],
+                                          order=1, mode="nearest")[0])
         dx, dy = xx - tx_x, yy - tx_y
         distance = np.maximum(np.sqrt(dx*dx + dy*dy), 50.0)
-        target_ground = dem_grid
         tx_abs = tx_ground + float(tx_height_m)
-        rx_abs = target_ground + float(rx_height_m)
+        rx_abs = dem_grid + float(rx_height_m)
         max_v = np.full(dem_grid.shape, -10.0, dtype="float32")
-        wavelength = 299.792458 / float(freq)  # meter
+        wavelength = 299.792458 / float(freq)
+        sample_fracs = np.linspace(0.04, 0.96, 24, dtype="float32")
         for frac in sample_fracs:
-            sx = tx_x + dx * frac
-            sy = tx_y + dy * frac
+            sx, sy = tx_x + dx*frac, tx_y + dy*frac
             scol, srow = inv * (sx, sy)
-            terrain = map_coordinates(dem, [srow.ravel(), scol.ravel()], order=1,
-                                      mode="nearest").reshape(dem_grid.shape)
+            terrain = map_coordinates(dem, [srow.ravel(), scol.ravel()],
+                                      order=1, mode="nearest").reshape(dem_grid.shape)
             d1 = np.maximum(distance * frac, 1.0)
             d2 = np.maximum(distance * (1.0-frac), 1.0)
-            # Koreksi kelengkungan bumi dengan k efektif 4/3 (aproksimasi).
-            earth_bulge = d1 * d2 / (2.0 * (4.0/3.0) * 6371000.0)
-            los_height = tx_abs + (rx_abs - tx_abs) * frac
+            earth_bulge = d1*d2 / (2.0*(4.0/3.0)*6371000.0)
+            los_height = tx_abs + (rx_abs-tx_abs)*frac
             obstruction = terrain + earth_bulge - los_height
-            v = obstruction * np.sqrt(2.0 * (d1+d2) / (wavelength*d1*d2))
+            v = obstruction * np.sqrt(2.0*(d1+d2)/(wavelength*d1*d2))
             max_v = np.maximum(max_v, v.astype("float32"))
 
-        # Aproksimasi rugi difraksi knife-edge ITU-R P.526 untuk satu penghalang dominan.
-        v_for_formula = np.maximum(max_v, -0.78)
+        v_formula = np.maximum(max_v, -0.78)
         knife_edge_loss = 6.9 + 20.0*np.log10(
-            np.sqrt((v_for_formula-0.1)**2 + 1.0) + v_for_formula - 0.1
+            np.sqrt((v_formula-0.1)**2 + 1.0) + v_formula - 0.1
         )
         diffraction = np.where(max_v <= -0.78, 0.0, knife_edge_loss)
-        eirp_dbm = 10.0 * np.log10(max(float(erp_watt), 0.001) * 1000.0) + 2.15
+        eirp_dbm = 10.0*np.log10(max(float(erp_watt), 0.001)*1000.0) + 2.15
         path_loss = 32.44 + 20.0*np.log10(float(freq)) + 20.0*np.log10(distance/1000.0)
         rx_dbm = eirp_dbm - path_loss - diffraction - float(extra_loss_db)
         rx_dbm = np.where(mask, rx_dbm, np.nan)
+        # Mask lagi di bawah ambang penerimaan yang diasumsikan.
+        rx_dbm = np.where(rx_dbm >= float(rx_threshold_dbm), rx_dbm, np.nan)
 
-        # Render raster transparan untuk Folium; skala warna berdasarkan level dBm.
         clipped = np.clip((rx_dbm + 110.0) / 70.0, 0.0, 1.0)
         rgba = np.zeros((*rx_dbm.shape, 4), dtype=np.uint8)
-        rgba[..., 0] = np.clip(255 * (1.0-clipped), 0, 255).astype("uint8")
-        rgba[..., 1] = np.clip(255 * clipped, 0, 255).astype("uint8")
+        rgba[..., 0] = np.clip(255*(1.0-clipped), 0, 255).astype("uint8")
+        rgba[..., 1] = np.clip(255*clipped, 0, 255).astype("uint8")
         rgba[..., 2] = 40
-        rgba[..., 3] = np.where(np.isfinite(rx_dbm), 105, 0).astype("uint8")
-        image = rgba
-        west_ll, south_ll = from_utm.transform(xmin, cy-radius_m)
-        east_ll, north_ll = from_utm.transform(cx+radius_m, ymax)
+        rgba[..., 3] = np.where(np.isfinite(rx_dbm), 125, 0).astype("uint8")
+        west_ll, south_ll = from_utm.transform(xmin, tx_y-radius_m)
+        east_ll, north_ll = from_utm.transform(tx_x+radius_m, ymax)
         outputs.append({
             "name": f"{tx.get('mux','MUX')} — {tx.get('wilayah','')}",
-            "image": image, "bounds": [[south_ll, west_ll], [north_ll, east_ll]],
+            "image": rgba, "bounds": [[south_ll, west_ll], [north_ll, east_ll]],
             "min_dbm": float(np.nanpercentile(rx_dbm, 5)) if np.any(np.isfinite(rx_dbm)) else None,
             "max_dbm": float(np.nanpercentile(rx_dbm, 95)) if np.any(np.isfinite(rx_dbm)) else None,
-            "frequency": freq
+            "frequency": freq, "max_range_km": max_range_km,
+            "fs_range_km": fs_range_km, "radio_horizon_km": horizon_km,
+            "raster_resolution_m": cell, "rx_threshold_dbm": float(rx_threshold_dbm)
         })
-    if not outputs:
-        raise ValueError(
-            "Tidak ada kanal UHF yang dikenali. Format nama MUX harus memuat kanal "
-            "seperti 'UHF 27' (kanal 21–48)."
-        )
     return outputs
-
 
 def _load_signal_measurements():
     """Ambil seluruh pengukuran komunitas dari Firebase."""
@@ -513,7 +522,7 @@ def display_broadcast_map():
     st.warning(
         "Catatan akurasi: browser Streamlit tidak dapat membaca tuner DVB-T2 secara langsung. "
         "Nilai Strength/Quality/SNR/BER harus dimasukkan dari layar informasi sinyal TV/STB. "
-        "Lapisan prediksi terrain lokal menggunakan DEM MAPZEN sekitar 30 m dan aproksimasi difraksi "
+        "Lapisan prediksi terrain lokal menggunakan DEM MAPZEN dengan resolusi raster adaptif dan aproksimasi difraksi "
         "knife-edge. Ini bukan model resmi ITU-R P.1812/Longley-Rice; gedung, clutter, pola antena, "
         "interferensi, dan parameter teknis pemancar tetap perlu diverifikasi."
     )
@@ -613,18 +622,20 @@ def display_broadcast_map():
             elif not located:
                 st.warning("Belum ada data pemancar dengan koordinat valid untuk dibuat heatmap nasional.")
         else:
-            st.subheader("⛰️ Prediksi terrain lokal (DEM 30 m)")
+            st.subheader("⛰️ Prediksi terrain hingga jangkauan maksimum pemancar")
             cov1, cov2, cov3, cov4 = st.columns(4)
-            coverage_radius = cov1.slider("Radius analisis (km)", 2, 9, 8, key="terrain_cov_radius")
-            coverage_erp = cov2.number_input("ERP asumsi (W)", 1.0, 1000000.0, 1000.0, 100.0, key="terrain_cov_erp")
-            tx_height = cov3.number_input("Tinggi antena TX (m)", 1.0, 300.0, 30.0, 1.0, key="terrain_tx_height")
-            rx_height = cov4.number_input("Tinggi antena RX (m)", 1.0, 30.0, 10.0, 1.0, key="terrain_rx_height")
-            if selected_row and st.checkbox("Tampilkan prediksi terrain pemancar terpilih", value=True, key="show_terrain_coverage"):
+            coverage_erp = cov1.number_input("ERP asumsi per pemancar (W)", 1.0, 1000000.0, 1000.0, 100.0, key="terrain_cov_erp")
+            tx_height = cov2.number_input("Tinggi antena TX di atas tanah (m)", 1.0, 1000.0, 30.0, 1.0, key="terrain_tx_height")
+            rx_height = cov3.number_input("Tinggi antena RX di atas tanah (m)", 1.0, 100.0, 10.0, 1.0, key="terrain_rx_height")
+            rx_threshold = cov4.number_input("Ambang penerimaan RX (dBm)", -120.0, -40.0, -90.0, 1.0, key="terrain_rx_threshold")
+            st.caption("Jarak prediksi dihitung otomatis dari ERP, frekuensi UHF, tinggi TX/RX, ambang penerimaan, rugi sistem, dan horizon radio efektif (k=4/3). Tidak ada radius analisis tetap. Resolusi DEM menyesuaikan luas area agar beban Streamlit Community Cloud terkendali.")
+            if selected_row and st.checkbox("Tampilkan prediksi terrain sampai jangkauan maksimum", value=True, key="show_terrain_coverage"):
                 try:
-                    with st.spinner("Mengambil DEM MAPZEN dan menghitung difraksi terrain 30 m..."):
+                    with st.spinner("Mengambil DEM MAPZEN dan menghitung prediksi terrain hingga jangkauan maksimum..."):
                         terrain_layers = _terrain_dem_coverage(
-                            [selected_row], center_lat, center_lon, radius_km=coverage_radius,
-                            erp_watt=coverage_erp, tx_height_m=tx_height, rx_height_m=rx_height,
+                            [selected_row], center_lat, center_lon,
+                            erp_watt=coverage_erp, tx_height_m=tx_height,
+                            rx_height_m=rx_height, rx_threshold_dbm=rx_threshold,
                             extra_loss_db=4.0, max_transmitters=1
                         )
                     for layer in terrain_layers:
@@ -633,7 +644,14 @@ def display_broadcast_map():
                             opacity=0.62, name=f"Prediksi terrain: {layer['name']}",
                             interactive=True, cross_origin=False, zindex=2
                         ).add_to(fmap)
-                    st.caption("Prediksi terrain lokal memakai DEM 30 m dan model difraksi sederhana; hasil indikatif, bukan pengukuran sinyal aktual.")
+                    layer = terrain_layers[0]
+                    st.caption(
+                        f"Jangkauan maksimum indikatif: {layer['max_range_km']:.1f} km; "
+                        f"batas link budget ruang bebas: {layer['fs_range_km']:.1f} km; "
+                        f"horizon radio: {layer['radio_horizon_km']:.1f} km; "
+                        f"resolusi raster: sekitar {layer['raster_resolution_m']:.0f} m/piksel. "
+                        "Area berwarna menunjukkan piksel yang diperkirakan melampaui ambang RX."
+                    )
                 except Exception as terrain_error:
                     st.warning(f"Coverage topografi belum dapat dihitung: {terrain_error}. Periksa dependensi GIS dan akses sumber DEM.")
         folium.LayerControl(collapsed=False, position="topright").add_to(fmap)
@@ -757,9 +775,9 @@ def display_broadcast_map():
             for layer in terrain_layers:
                 st.write(f"**{layer['name']}** — kanal {layer['frequency']:.1f} MHz; rentang raster persentil 5–95: "
                          f"{layer['min_dbm']:.1f} hingga {layer['max_dbm']:.1f} dBm.")
-            st.caption("Perhitungan memakai spreading ruang bebas sebagai komponen dasar, lalu menambahkan rugi difraksi dari elevasi DEM di sepanjang lintasan TX–piksel. Jadi bukan FSPL murni. Nilai ERP, tinggi TX/RX, rugi sistem, dan elevasi antena harus disesuaikan dengan data lapangan.")
+            st.caption("Perhitungan memakai spreading ruang bebas dan aproksimasi difraksi knife-edge dari DEM. Jarak maksimum dihitung dari link budget serta horizon radio efektif. ERP, frekuensi, tinggi antena, ambang RX, pola antena, clutter, interferensi, dan rugi sistem harus diverifikasi dengan data lapangan; hasil ini bukan prediksi sertifikasi atau jaminan penerimaan.")
         else:
-            st.info("Aktifkan lapisan coverage topografi dan pastikan ada pemancar dengan nama kanal UHF (mis. 'UHF 27') serta DEM dapat diunduh.")
+            st.info("Pilih mode Pemancar terpilih, pilih MUX dengan koordinat dan kanal UHF (mis. 'UHF 27'), lalu aktifkan prediksi terrain.")
 
         # Pengukuran aktual dari layar informasi sinyal pada perangkat TV/STB.
         st.subheader("📝 Kirim pengukuran aktual dari TV/STB")

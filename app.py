@@ -1167,10 +1167,23 @@ def display_broadcast_map():
                 popup=folium.Popup(popup, max_width=300)
             ).add_to(fmap)
 
-        st_folium(
+        # Koordinat laporan mengikuti pusat peta setelah pengguna menggeser peta
+        # atau memakai kontrol GPS. Jika data pusat belum dikirim komponen,
+        # gunakan koordinat pemancar terpilih sebagai fallback yang aman.
+        target_lat, target_lon = center_lat, center_lon
+        map_state = st_folium(
             fmap, width=None, height=560, use_container_width=True,
             key=map_component_key
-        )
+        ) or {}
+        map_center = map_state.get("center") if isinstance(map_state, dict) else None
+        if isinstance(map_center, dict):
+            try:
+                candidate_lat = float(map_center.get("lat", target_lat))
+                candidate_lon = float(map_center.get("lng", map_center.get("lon", target_lon)))
+                if -11 <= candidate_lat <= 6 and 95 <= candidate_lon <= 141:
+                    target_lat, target_lon = candidate_lat, candidate_lon
+            except (TypeError, ValueError):
+                pass
         st.caption(
             f"{len(located)} titik pemancar dari database • {1 if selected_row else 0} pemancar dipilih • "
             f"{len(selected_measurements)} laporan pengukuran untuk MUX terpilih. "

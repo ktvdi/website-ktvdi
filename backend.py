@@ -286,7 +286,8 @@ def handle_event(event: dict[str, Any], session: dict[str, Any], secrets=None) -
             db.reference(f"signal_measurements/{prov}/{area}/{mux}").push().set(measurement)
             return {"ok":True,"message":"Hasil pengukuran sinyal berhasil dikirim."}
         if action=="calculate_terrain":
-            username=_require_auth(session)
+            # Prediksi terrain adalah informasi publik seperti pada aplikasi lama;
+            # login hanya diperlukan untuk aksi tulis (data teknis/laporan).
             prov=_safe_key(event.get("provinsi"),"Provinsi"); area=_safe_key(event.get("wilayah"),"Wilayah"); mux=_safe_key(event.get("mux"),"MUX")
             rows=[r for r in get_all_broadcast_rows() if r["provinsi"]==prov and r["wilayah"]==area and r["mux"]==mux]
             if not rows: raise ValueError("Data pemancar tidak ditemukan.")

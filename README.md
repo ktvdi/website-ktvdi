@@ -19,11 +19,11 @@ Ini adalah **migrasi bertahap yang sudah diperluas**, tetapi belum boleh diangga
 - Laporan koreksi data dan dashboard admin untuk mengubah status/catatan laporan.
 - Audit log dan pemulihan snapshot versi sebelumnya oleh admin.
 - Peta Leaflet dengan marker koordinat pemancar, titik laporan pengukuran, pengisian koordinat, data teknis pemancar, dan formulir pengukuran aktual TV/STB.
-- Prediksi cakupan terrain dari DEM dengan overlay PNG pada peta. Model dan keterbatasannya mengikuti fungsi aplikasi lama; hasil tetap indikatif, bukan jaminan penerimaan sinyal. Pengambilan DEM memerlukan akses jaringan dan dapat memakan waktu.
+- Prediksi cakupan terrain dari DEM dengan overlay PNG pada peta. Prediksi otomatis aktif saat pemancar UHF 21–48 dipilih (dapat dinonaktifkan melalui checkbox) dan dapat dihitung ulang secara manual. Prediksi merupakan informasi baca-publik dan tidak mensyaratkan login; aksi tulis tetap memerlukan login. Model, fallback teknis, dan keterbatasannya mengikuti fungsi aplikasi lama; hasil tetap indikatif, bukan jaminan penerimaan sinyal. Pengambilan DEM memerlukan akses jaringan dan dapat memakan waktu.
 - Chatbot Gemini menggunakan model `gemini-2.5-flash`.
 
 ## Perbedaan/pekerjaan yang masih perlu diverifikasi
-- UI peta menggunakan Leaflet/OSM, bukan Folium; interaksi marker, overlay DEM, koordinat, dan pengukuran telah dialihkan, tetapi perlu uji browser di Community Cloud.
+- UI peta menggunakan Leaflet/OSM, bukan Folium; kontrol layer peta jalan/satelit, pemilihan marker, zoom ke area prediksi, overlay DEM, koordinat, dan pengukuran tersedia. GPS browser dan filter khusus peta lama belum direplikasi persis.
 - Pengalaman peta lama yang spesifik (kontrol GPS, pemilihan marker, layer satelit, filter, dan tampilan detail/analisis lainnya) belum seluruhnya direplikasi persis.
 - Pengujian end-to-end belum dapat dilakukan di sini karena kredensial Firebase, SMTP, dan Gemini berada di Secrets milik deployment Anda. Paket ini tidak menyertakan atau meminta rahasia tersebut.
 - Setelah dipasang, uji seluruh alur tulis/baca, khususnya OTP, edit/hapus/restore, koordinat, pengukuran, serta kalkulasi DEM sebelum mengganti aplikasi aktif.

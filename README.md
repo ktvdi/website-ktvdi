@@ -52,3 +52,5 @@ CATATAN PERBAIKAN IMPORT TIMESTAMP
 Unggah dan timpa app.py serta backend.py dari paket ini secara bersamaan.
 Fungsi get_latest_transmitter_update_timestamp() berada di backend.py.
 Setelah commit, lakukan Reboot app di Streamlit Cloud.
+
+Logo header disimpan sebagai Logo_KTVDI.png di folder utama proyek. Header memuatnya dari frontend/index.html.

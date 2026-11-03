@@ -23,8 +23,8 @@ Ini adalah **migrasi bertahap yang sudah diperluas**, tetapi belum boleh diangga
 - Chatbot Gemini menggunakan model `gemini-2.5-flash`.
 
 ## Perbedaan/pekerjaan yang masih perlu diverifikasi
-- UI peta menggunakan Leaflet/OSM, bukan Folium; kontrol layer peta jalan/satelit, pemilihan marker, zoom ke area prediksi, overlay DEM, koordinat, dan pengukuran tersedia. GPS browser dan filter khusus peta lama belum direplikasi persis.
-- Pengalaman peta lama yang spesifik (kontrol GPS, pemilihan marker, layer satelit, filter, dan tampilan detail/analisis lainnya) belum seluruhnya direplikasi persis.
+- UI peta menggunakan Leaflet/OSM, bukan Folium. Peta utama menyediakan layer jalan/satelit, GPS browser, filter provinsi/wilayah/pencarian MUX-kanal, pemilihan marker, zoom area prediksi, overlay DEM, koordinat pointer, pengukuran jarak, marker pengukuran komunitas, dan panel detail.
+- Halaman mandiri **Tambah Titik Pemancar** tersedia di navigasi. Pengguna yang login dapat menambahkan koordinat MUX yang belum memiliki titik; perubahan/penghapusan koordinat yang sudah tersimpan hanya dapat dilakukan admin. Peta pemilihan memakai tanda bidik di tengah peta, layer jalan/satelit, dan GPS browser.
 - Pengujian end-to-end belum dapat dilakukan di sini karena kredensial Firebase, SMTP, dan Gemini berada di Secrets milik deployment Anda. Paket ini tidak menyertakan atau meminta rahasia tersebut.
 - Setelah dipasang, uji seluruh alur tulis/baca, khususnya OTP, edit/hapus/restore, koordinat, pengukuran, serta kalkulasi DEM sebelum mengganti aplikasi aktif.
 

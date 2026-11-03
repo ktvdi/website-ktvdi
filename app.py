@@ -383,10 +383,14 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         to_utm = Transformer.from_crs("EPSG:4326", utm_crs, always_xy=True)
         from_utm = Transformer.from_crs(utm_crs, "EPSG:4326", always_xy=True)
         tx_x, tx_y = to_utm.transform(tx_lon, tx_lat)
-        radius_m = max_range_km * 1000.0
+        # Area terrain dibuat konsisten untuk setiap pemancar: diameter 200 km
+        # (radius 100 km). Saat ini overlay hanya dihitung untuk pemancar terpilih.
+        # Area di luar ambang RX tetap transparan pada overlay.
+        terrain_radius_km = 100.0
+        radius_m = terrain_radius_km * 1000.0
 
-        # Batasi jumlah piksel, bukan jarak geografis. Resolusi otomatis
-        # menjadi lebih kasar untuk pemancar dengan jangkauan lebih luas.
+        # Batasi jumlah piksel, bukan jarak geografis. Untuk diameter 200 km,
+        # resolusi raster menyesuaikan agar tetap layak di Streamlit Community Cloud.
         target_max_side = 700
         cell = max(30.0, (2.0 * radius_m) / target_max_side)
         n = int(np.ceil((2.0 * radius_m) / cell))
@@ -404,8 +408,8 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         north = max(v[1] for v in corners) + 0.01
 
         dem_product = "MAPZEN"
-        cache_key = (f"ktvdi_{dem_product.lower()}_terrain_{round(tx_lat,3)}_"
-                     f"{round(tx_lon,3)}_{int(round(max_range_km))}_{int(round(cell))}m.tif")
+        cache_key = (f"ktvdi_{dem_product.lower()}_terrain_d200km_{round(tx_lat,3)}_"
+                     f"{round(tx_lon,3)}_{int(round(cell))}m.tif")
         dem_path = os.path.join(tempfile.gettempdir(), cache_key)
         if not os.path.exists(dem_path) or os.path.getsize(dem_path) < 1000:
             elevation.clip(bounds=(west, south, east, north), output=dem_path,
@@ -428,7 +432,7 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         dem_grid = map_coordinates(dem, [row, col], order=1, mode="nearest")
         valid = np.isfinite(dem_grid) & (dem_grid > -500)
         radial_km = np.sqrt((xx-tx_x)**2 + (yy-tx_y)**2) / 1000.0
-        mask = valid & (radial_km <= max_range_km)
+        mask = valid & (radial_km <= terrain_radius_km)
         if not np.any(mask):
             raise ValueError("DEM tidak mencakup area prediksi atau seluruh piksel DEM kosong.")
 
@@ -492,6 +496,8 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
             "min_dbm": float(np.nanpercentile(rx_dbm, 5)) if np.any(np.isfinite(rx_dbm)) else None,
             "max_dbm": float(np.nanpercentile(rx_dbm, 95)) if np.any(np.isfinite(rx_dbm)) else None,
             "frequency": freq, "max_range_km": max_range_km,
+            "terrain_radius_km": terrain_radius_km,
+            "terrain_diameter_km": 2.0 * terrain_radius_km,
             "fs_range_km": fs_range_km, "radio_horizon_km": horizon_km,
             "raster_resolution_m": cell, "rx_threshold_dbm": float(rx_threshold_dbm)
         })
@@ -595,10 +601,10 @@ def display_broadcast_map():
         tx_height = cov2.number_input("Tinggi antena TX di atas tanah (m)", 1.0, 1000.0, 30.0, 1.0, key="terrain_tx_height")
         rx_height = cov3.number_input("Tinggi antena RX di atas tanah (m)", 1.0, 100.0, 10.0, 1.0, key="terrain_rx_height")
         rx_threshold = cov4.number_input("Ambang penerimaan RX (dBm)", -120.0, -40.0, -90.0, 1.0, key="terrain_rx_threshold")
-        st.caption("Jarak prediksi dihitung otomatis dari ERP, frekuensi UHF, tinggi TX/RX, ambang penerimaan, rugi sistem, dan horizon radio efektif (k=4/3). Tidak ada radius analisis tetap. Resolusi DEM menyesuaikan luas area agar beban Streamlit Community Cloud terkendali.")
+        st.caption("Area analisis terrain berdiameter tetap 200 km (radius 100 km) untuk pemancar mana pun yang dipilih. Warna hanya muncul pada area yang diperkirakan melampaui ambang RX berdasarkan ERP, frekuensi UHF, tinggi TX/RX, rugi sistem, horizon radio, dan penghalang terrain. Resolusi DEM menyesuaikan agar beban Streamlit Community Cloud terkendali.")
         if selected_row and st.checkbox("Tampilkan prediksi terrain sampai jangkauan maksimum", value=True, key="show_terrain_coverage"):
             try:
-                with st.spinner("Mengambil DEM MAPZEN dan menghitung prediksi terrain hingga jangkauan maksimum..."):
+                with st.spinner("Mengambil DEM MAPZEN dan menghitung prediksi terrain pada area berdiameter 200 km..."):
                     terrain_layers = _terrain_dem_coverage(
                         [selected_row], center_lat, center_lon,
                         erp_watt=coverage_erp, tx_height_m=tx_height,
@@ -627,7 +633,8 @@ def display_broadcast_map():
                 fmap.get_root().html.add_child(folium.Element(terrain_legend))
                 layer = terrain_layers[0]
                 st.caption(
-                    f"Jangkauan maksimum indikatif: {layer['max_range_km']:.1f} km; "
+                    f"Diameter area terrain: {layer['terrain_diameter_km']:.0f} km (radius {layer['terrain_radius_km']:.0f} km); "
+                    f"jangkauan link-budget indikatif: {layer['max_range_km']:.1f} km; "
                     f"batas link budget ruang bebas: {layer['fs_range_km']:.1f} km; "
                     f"horizon radio: {layer['radio_horizon_km']:.1f} km; "
                     f"resolusi raster: sekitar {layer['raster_resolution_m']:.0f} m/piksel. "

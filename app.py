@@ -610,6 +610,156 @@ def _load_signal_measurements():
     return records
 
 
+def display_transmitter_technical_data_page():
+    """Halaman mandiri untuk kontribusi data teknis pemancar oleh semua pengguna login."""
+    if not st.session_state.get("login"):
+        st.warning("Anda harus login untuk menginput data teknis pemancar.")
+        if st.button("🔐 Login / Daftar Akun", key="technical_data_login"):
+            switch_page("login")
+            st.rerun()
+        return
+
+    if st.button("⬅️ Kembali ke Beranda", key="back_technical_data"):
+        switch_page("beranda")
+        st.rerun()
+
+    st.header("📡 Data Teknis Pemancar")
+    st.markdown(
+        "Kontribusikan parameter teknis pemancar yang diketahui. Data akan digunakan dalam "
+        "prediksi terrain. Jika suatu parameter belum tersedia, aplikasi tetap menggunakan "
+        "nilai asumsi untuk parameter tersebut."
+    )
+    st.info(
+        "Halaman ini terbuka bagi semua pengguna yang sudah login. Sertakan sumber atau "
+        "referensi agar komunitas dapat memeriksa keakuratan informasi. Perubahan dicatat "
+        "dengan nama pengguna dan waktu pembaruan."
+    )
+
+    rows = get_all_broadcast_rows()
+    if not rows:
+        st.warning("Belum ada data pemancar di database.")
+        return
+
+    labels = [f"{r.get('provinsi', '')} / {r.get('wilayah', '')} / {r.get('mux', '')}" for r in rows]
+    saved_identity = st.session_state.get("technical_selected_identity")
+    default_index = 0
+    if saved_identity:
+        for idx, row in enumerate(rows):
+            identity = (row.get("provinsi", ""), row.get("wilayah", ""), row.get("mux", ""))
+            if identity == tuple(saved_identity):
+                default_index = idx
+                break
+
+    selected_idx = st.selectbox(
+        "Pilih pemancar yang akan dilengkapi datanya",
+        range(len(rows)), format_func=lambda i: labels[i],
+        index=default_index, key="technical_data_transmitter_select"
+    )
+    selected = rows[selected_idx]
+    identity = (selected.get("provinsi", ""), selected.get("wilayah", ""), selected.get("mux", ""))
+    st.session_state["technical_selected_identity"] = identity
+    detail = selected.get("detail") or {}
+
+    st.subheader("Data yang tersimpan saat ini")
+    overview = {
+        "Tinggi TX (m)": detail.get("tx_height_m", "Belum tersedia"),
+        "Power Output (W)": detail.get("tx_power_w", "Belum tersedia"),
+        "ERP (W)": detail.get("erp_w", "Belum tersedia"),
+        "Gain antena (dBd)": detail.get("antenna_gain_dbd", "Belum tersedia"),
+        "Rugi feeder (dB)": detail.get("feeder_loss_db", "Belum tersedia"),
+    }
+    st.dataframe(pd.DataFrame([overview]), use_container_width=True, hide_index=True)
+    if detail.get("technical_data_reference"):
+        st.caption(f"Referensi tersimpan: {detail.get('technical_data_reference')}")
+    if detail.get("technical_data_updated_at"):
+        st.caption(
+            f"Pembaruan terakhir: {detail.get('technical_data_updated_at')} "
+            f"oleh {detail.get('technical_data_updated_by', 'pengguna')}"
+        )
+
+    st.subheader("Tambah / perbarui parameter teknis")
+    st.info(
+        "Catatan: Data yang belum diketahui tidak perlu diisi. Biarkan kolom tersebut kosong; "
+        "jangan menebak nilainya. Aplikasi akan menggunakan nilai asumsi hanya untuk parameter "
+        "yang belum tersedia saat menghitung prediksi terrain. Kolom kosong juga tidak akan "
+        "menghapus data yang sebelumnya sudah tersimpan."
+    )
+    st.caption(
+        "Isi hanya parameter yang diketahui dan sertakan sumber bila tersedia. "
+        "Gunakan titik atau koma untuk desimal."
+    )
+    form_identity = "|".join(map(str, identity))
+    form_key = "transmitter_technical_data_page_" + hashlib.sha1(form_identity.encode("utf-8")).hexdigest()[:12]
+    with st.form(form_key, clear_on_submit=False):
+        c1, c2 = st.columns(2)
+        tx_height_input = c1.text_input("Tinggi antena TX (m)", value=str(detail.get("tx_height_m", "")))
+        tx_power_input = c2.text_input("Power Output (W)", value=str(detail.get("tx_power_w", "")))
+        c3, c4 = st.columns(2)
+        erp_input = c3.text_input("ERP (W), jika diketahui", value=str(detail.get("erp_w", "")))
+        gain_input = c4.text_input("Gain antena (dBd)", value=str(detail.get("antenna_gain_dbd", "")))
+        feeder_input = st.text_input("Rugi feeder (dB)", value=str(detail.get("feeder_loss_db", "")))
+        reference_input = st.text_input(
+            "Sumber / referensi data", value=str(detail.get("technical_data_reference", "")),
+            placeholder="Contoh: dokumen izin, data operator, situs resmi, atau hasil pengukuran"
+        )
+        submitted = st.form_submit_button("💾 Simpan data teknis pemancar", use_container_width=True)
+
+    if submitted:
+        raw_fields = {
+            "tx_height_m": tx_height_input,
+            "tx_power_w": tx_power_input,
+            "erp_w": erp_input,
+            "antenna_gain_dbd": gain_input,
+            "feeder_loss_db": feeder_input,
+        }
+        parsed = {}
+        errors = []
+        for field, raw in raw_fields.items():
+            value = raw.strip()
+            if not value:
+                continue
+            try:
+                number = float(value.replace(",", "."))
+                if not math.isfinite(number):
+                    raise ValueError
+                if field in {"tx_height_m", "tx_power_w", "erp_w"} and number <= 0:
+                    errors.append(f"{field}: harus lebih besar dari 0")
+                elif field == "feeder_loss_db" and number < 0:
+                    errors.append("Rugi feeder tidak boleh negatif")
+                elif field == "antenna_gain_dbd" and not -10 <= number <= 30:
+                    errors.append("Gain antena harus antara -10 hingga 30 dBd")
+                else:
+                    parsed[field] = number
+            except (TypeError, ValueError):
+                errors.append(f"{field}: masukkan angka yang valid")
+
+        if not parsed and not reference_input.strip():
+            errors.append("Masukkan setidaknya satu parameter atau referensi data.")
+
+        if errors:
+            for error in errors:
+                st.error(error)
+        else:
+            prov, wilayah, mux = identity
+            technical_ref = db.reference(f"siaran/{prov}/{wilayah}/{mux}")
+            before = technical_ref.get() or {}
+            if isinstance(before, list):
+                before = {"siaran": before}
+            updated = dict(before)
+            updated.update(parsed)
+            if reference_input.strip():
+                updated["technical_data_reference"] = reference_input.strip()
+            updated["technical_data_updated_at"] = datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
+            updated["technical_data_updated_by"] = st.session_state.get("username", "pengguna")
+            technical_ref.set(updated)
+            write_audit_log(
+                "update_transmitter_technical_data", prov, wilayah, mux,
+                before=before, after=updated
+            )
+            st.success("Data teknis pemancar berhasil disimpan ke Firebase.")
+            st.rerun()
+
+
 def display_broadcast_map():
     if st.button("⬅️ Kembali ke Beranda", key="back_broadcast_map"):
         switch_page("beranda"); st.rerun()
@@ -678,74 +828,18 @@ def display_broadcast_map():
             attr="Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
             name="Satelit", overlay=False, control=True, show=False
         ).add_to(fmap)
-        # Semua pengguna yang sudah login dapat menambahkan/memperbarui data teknis
-        # bersama per pemancar. Koordinat dan pengaturan administratif tetap dibatasi admin.
+        # Pengelolaan data teknis dipindahkan ke halaman tersendiri.
         if selected_row is not None and logged_in:
-            current_detail = selected_row.get("detail") or {}
-            with st.expander("📡 Tambahkan / perbarui data teknis pemancar", expanded=False):
-                st.caption("Semua pengguna yang login dapat berkontribusi. Isi parameter yang diketahui dan sertakan sumber/referensi agar dapat diperiksa komunitas. Field kosong tidak menghapus data yang sudah tersimpan; parameter yang belum tersedia tetap memakai asumsi.")
-                technical_form_identity = "|".join([
-                    str(selected_row.get("provinsi", "")),
-                    str(selected_row.get("wilayah", "")),
-                    str(selected_row.get("mux", ""))
-                ])
-                technical_form_key = "transmitter_technical_data_" + hashlib.sha1(technical_form_identity.encode("utf-8")).hexdigest()[:12]
-                with st.form(technical_form_key, clear_on_submit=False):
-                    tech_c1, tech_c2 = st.columns(2)
-                    tx_height_input = tech_c1.text_input("Tinggi antena TX aktual (m)", value=str(current_detail.get("tx_height_m", "")))
-                    tx_power_input = tech_c2.text_input("Power Output aktual (W)", value=str(current_detail.get("tx_power_w", "")))
-                    tech_c3, tech_c4 = st.columns(2)
-                    erp_input = tech_c3.text_input("ERP aktual (W), jika diketahui", value=str(current_detail.get("erp_w", "")))
-                    gain_input = tech_c4.text_input("Gain antena aktual (dBd)", value=str(current_detail.get("antenna_gain_dbd", "")))
-                    feeder_input = st.text_input("Rugi feeder aktual (dB)", value=str(current_detail.get("feeder_loss_db", "")))
-                    reference_input = st.text_input("Sumber / referensi data", value=str(current_detail.get("technical_data_reference", "")), placeholder="Contoh: dokumen izin, data operator, hasil pengukuran")
-                    save_technical = st.form_submit_button("💾 Simpan data teknis pemancar")
-                if save_technical:
-                    raw_fields = {
-                        "tx_height_m": tx_height_input, "tx_power_w": tx_power_input,
-                        "erp_w": erp_input, "antenna_gain_dbd": gain_input,
-                        "feeder_loss_db": feeder_input
-                    }
-                    parsed = {}
-                    errors = []
-                    for field, raw in raw_fields.items():
-                        value = raw.strip()
-                        if not value:
-                            continue
-                        try:
-                            number = float(value.replace(",", "."))
-                            if not math.isfinite(number):
-                                raise ValueError
-                            if field in {"tx_height_m", "tx_power_w", "erp_w"} and number <= 0:
-                                errors.append(f"{field}: harus lebih besar dari 0")
-                            elif field == "feeder_loss_db" and number < 0:
-                                errors.append("Rugi feeder tidak boleh negatif")
-                            elif field == "antenna_gain_dbd" and not -10 <= number <= 30:
-                                errors.append("Gain antena harus antara -10 hingga 30 dBd")
-                            else:
-                                parsed[field] = number
-                        except (TypeError, ValueError):
-                            errors.append(f"{field}: masukkan angka yang valid")
-                    if errors:
-                        for error in errors:
-                            st.error(error)
-                    else:
-                        r = selected_row
-                        technical_ref = db.reference(f"siaran/{r['provinsi']}/{r['wilayah']}/{r['mux']}")
-                        before_technical = technical_ref.get() or {}
-                        if isinstance(before_technical, list):
-                            before_technical = {"siaran": before_technical}
-                        updated_technical = dict(before_technical)
-                        # Pertahankan nilai yang sudah ada untuk field yang tidak diisi;
-                        # kontribusi pengguna hanya memperbarui parameter yang diberikan.
-                        updated_technical.update(parsed)
-                        updated_technical["technical_data_reference"] = reference_input.strip()
-                        updated_technical["technical_data_updated_at"] = datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
-                        updated_technical["technical_data_updated_by"] = st.session_state.get("username", "pengguna")
-                        technical_ref.set(updated_technical)
-                        write_audit_log("update_transmitter_technical_data", r["provinsi"], r["wilayah"], r["mux"], before=before_technical, after=updated_technical)
-                        st.success("Data teknis pemancar berhasil disimpan ke Firebase.")
-                        st.rerun()
+            if st.button("📡 Buka halaman Data Teknis Pemancar", key="open_transmitter_technical_page"):
+                st.session_state["technical_selected_identity"] = (
+                    selected_row.get("provinsi", ""),
+                    selected_row.get("wilayah", ""),
+                    selected_row.get("mux", ""),
+                )
+                switch_page("technical_data")
+                st.rerun()
+        elif selected_row is not None:
+            st.caption("Login untuk mengusulkan atau memperbarui data teknis pemancar melalui halaman Data Teknis Pemancar.")
 
         st.subheader("⛰️ Prediksi terrain pemancar terpilih")
         cov1, cov2, cov3, cov4, cov5, cov6 = st.columns(6)
@@ -1237,6 +1331,7 @@ def display_sidebar():
             ]
             if logged_in:
                 menu_items.extend([
+                    ("📡  Data Teknis Pemancar", "technical_data"),
                     ("➕  Tambah Data Siaran", "add_data"),
                     ("👤  Profil Saya", "profile"),
                     ("👥  Profil Pengguna Lain", "other_users"),
@@ -2199,6 +2294,9 @@ elif st.session_state.halaman == "login":
     if st.button("⬅️ Kembali ke Beranda"):
         switch_page("beranda")
         st.rerun()
+
+elif st.session_state.halaman == "technical_data":
+    display_transmitter_technical_data_page()
 
 elif st.session_state.halaman == "report_data":
     display_report_page()

@@ -442,6 +442,7 @@ def _resolve_transmitter_technical_data(tx, fallback_erp_watt=1000.0,
     used_tx_height = actual_tx_height if actual_tx_height is not None else float(fallback_tx_height_m)
     tx_height_source = "data pemancar" if actual_tx_height is not None else "asumsi"
 
+    assumption_notes = []
     if actual_erp is not None:
         used_erp = actual_erp
         erp_source = "ERP aktual tersimpan"
@@ -452,15 +453,29 @@ def _resolve_transmitter_technical_data(tx, fallback_erp_watt=1000.0,
         used_feeder_loss = (actual_feeder_loss if actual_feeder_loss is not None
                             else float(fallback_feeder_loss_db))
         used_erp = actual_tx_power * (10.0 ** ((used_gain - used_feeder_loss) / 10.0))
-        if actual_gain is not None and actual_feeder_loss is not None:
-            erp_source = "dihitung dari power output dan data antena aktual"
+        if actual_gain is None:
+            assumption_notes.append(
+                f"gain antena memakai asumsi {used_gain:g} dBd"
+            )
+        if actual_feeder_loss is None:
+            assumption_notes.append(
+                f"rugi feeder memakai asumsi {used_feeder_loss:g} dB"
+            )
+        if assumption_notes:
+            erp_source = "ERP estimasi dari Power Output; sebagian parameter diasumsikan"
         else:
-            erp_source = "dihitung dari power output; gain/rugi feeder sebagian asumsi"
+            erp_source = "ERP estimasi dari Power Output dan data antena aktual"
     else:
         used_erp = float(fallback_erp_watt)
         used_gain = actual_gain
         used_feeder_loss = actual_feeder_loss
-        erp_source = "ERP asumsi"
+        erp_source = "ERP fallback/asumsi karena Power Output dan ERP aktual tidak tersedia"
+        assumption_notes.append(f"ERP fallback {used_erp:g} W digunakan")
+
+    if actual_tx_height is None:
+        assumption_notes.append(
+            f"tinggi TX memakai asumsi {used_tx_height:g} m"
+        )
 
     return {
         "erp_watt": used_erp,
@@ -470,6 +485,11 @@ def _resolve_transmitter_technical_data(tx, fallback_erp_watt=1000.0,
         "feeder_loss_db": used_feeder_loss,
         "erp_source": erp_source,
         "tx_height_source": tx_height_source,
+        "assumption_notes": assumption_notes,
+        "prediction_data_status": (
+            "Estimasi dengan asumsi teknis" if assumption_notes
+            else "Parameter daya dan tinggi TX tersedia; model propagasi tetap berupa estimasi"
+        ),
         "technical_reference": detail.get("technical_data_reference", ""),
         "technical_updated_at": detail.get("technical_data_updated_at", ""),
     }
@@ -643,6 +663,8 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
             "tx_power_w": technical.get("tx_power_w"),
             "erp_source": technical.get("erp_source"),
             "tx_height_source": technical.get("tx_height_source"),
+            "assumption_notes": technical.get("assumption_notes", []),
+            "prediction_data_status": technical.get("prediction_data_status", ""),
             "technical_reference": technical.get("technical_reference", ""),
             "technical_updated_at": technical.get("technical_updated_at", "")
         })
@@ -1112,7 +1134,14 @@ def display_broadcast_map():
         fallback_feeder = cov4.number_input("Feeder fallback (dB)", 0.0, 30.0, 2.0, 0.5, key="terrain_fallback_feeder")
         rx_height = cov5.number_input("RX (m)", 1.0, 100.0, 10.0, 1.0, key="terrain_rx_height")
         rx_threshold = cov6.number_input("Ambang RX (dBm)", -120.0, -40.0, -90.0, 1.0, key="terrain_rx_threshold")
-        st.caption("Area analisis terrain berdiameter tetap 200 km (radius 100 km) untuk pemancar mana pun yang dipilih. Warna hanya muncul pada area yang diperkirakan melampaui ambang RX berdasarkan ERP, frekuensi UHF, tinggi TX/RX, rugi sistem, horizon radio, dan penghalang terrain. Resolusi DEM menyesuaikan agar beban Streamlit Community Cloud terkendali.")
+        st.caption(
+            "Area analisis terrain berdiameter tetap 200 km (radius 100 km). "
+            "Power Output (W) dan Tinggi TX dari data pemancar dipakai jika tersedia. "
+            "Gain antena, rugi feeder, ERP, atau tinggi TX yang belum diketahui dapat memakai "
+            "nilai fallback dan akan diberi penanda asumsi pada hasil prediksi. "
+            "Warna menunjukkan estimasi area yang diperkirakan melampaui ambang RX, bukan "
+            "jaminan bahwa siaran pasti diterima. Resolusi DEM menyesuaikan beban komputasi."
+        )
         if selected_row and st.checkbox("Tampilkan prediksi terrain sampai jangkauan maksimum", value=True, key="show_terrain_coverage"):
             try:
                 with st.spinner("Mengambil DEM MAPZEN dan menghitung prediksi terrain pada area berdiameter 200 km..."):
@@ -1155,6 +1184,23 @@ def display_broadcast_map():
                     + (f"Power Output tersimpan: {layer['tx_power_w']:.1f} W. " if layer.get("tx_power_w") is not None else "")
                     + "Area berwarna menunjukkan piksel yang diperkirakan melampaui ambang RX."
                 )
+                st.info(
+                    "Status data prediksi: " + layer.get(
+                        "prediction_data_status", "Estimasi; parameter teknis perlu diverifikasi."
+                    ) + "."
+                )
+                if layer.get("assumption_notes"):
+                    st.warning(
+                        "Prediksi ini adalah estimasi dengan asumsi teknis: "
+                        + "; ".join(layer["assumption_notes"])
+                        + ". Hasil bukan jaminan penerimaan siaran."
+                    )
+                else:
+                    st.caption(
+                        "ERP dan tinggi TX menggunakan data yang tersedia. "
+                        "Hasil tetap merupakan estimasi karena model terrain belum menggantikan "
+                        "pengukuran lapangan atau model propagasi tersertifikasi."
+                    )
                 if layer.get("technical_reference"):
                     st.caption(f"Referensi data teknis: {layer['technical_reference']}")
             except Exception as terrain_error:

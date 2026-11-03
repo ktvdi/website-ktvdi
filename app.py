@@ -760,6 +760,175 @@ def display_transmitter_technical_data_page():
             st.rerun()
 
 
+
+def display_add_transmitter_point_page():
+    """Halaman mandiri untuk menambahkan atau mengelola koordinat titik pemancar."""
+    if not st.session_state.get("login"):
+        st.warning("Anda harus login untuk menambahkan titik pemancar.")
+        if st.button("🔐 Login / Daftar Akun", key="add_transmitter_point_login"):
+            switch_page("login")
+            st.rerun()
+        return
+
+    if st.button("⬅️ Kembali ke Beranda", key="back_add_transmitter_point"):
+        switch_page("beranda")
+        st.rerun()
+
+    st.header("📍 Tambah Titik Pemancar")
+    st.markdown(
+        "Pilih pemancar yang belum memiliki koordinat, lalu geser dan perbesar peta "
+        "hingga tanda bidik di tengah peta tepat berada pada lokasi antena pemancar."
+    )
+    st.info(
+        "Semua pengguna yang login dapat menambahkan koordinat untuk pemancar yang belum "
+        "memiliki titik. Koordinat yang sudah tersimpan hanya dapat diubah atau dihapus oleh admin. "
+        "Pastikan lokasi yang dikirim benar dan dapat dipertanggungjawabkan."
+    )
+
+    rows = get_all_broadcast_rows()
+    if not rows:
+        st.warning("Belum ada data pemancar di database.")
+        return
+
+    def has_valid_coordinates(row):
+        try:
+            lat, lon = float(row.get("latitude")), float(row.get("longitude"))
+            return -11 <= lat <= 6 and 95 <= lon <= 141
+        except (TypeError, ValueError):
+            return False
+
+    labels = [
+        f"{r.get('provinsi', '')} / {r.get('wilayah', '')} / {r.get('mux', '')}"
+        + (" — sudah memiliki titik" if has_valid_coordinates(r) else " — belum memiliki titik")
+        for r in rows
+    ]
+    preferred_identity = st.session_state.get("point_selected_identity")
+    default_index = next((i for i, r in enumerate(rows)
+                          if not has_valid_coordinates(r)), 0)
+    if preferred_identity:
+        for i, row in enumerate(rows):
+            if (row.get("provinsi", ""), row.get("wilayah", ""), row.get("mux", "")) == tuple(preferred_identity):
+                default_index = i
+                break
+
+    selected_idx = st.selectbox(
+        "Pilih pemancar", range(len(rows)), format_func=lambda i: labels[i],
+        index=default_index, key="add_transmitter_point_select"
+    )
+    selected = rows[selected_idx]
+    identity = (selected.get("provinsi", ""), selected.get("wilayah", ""), selected.get("mux", ""))
+    st.session_state["point_selected_identity"] = identity
+    has_saved_location = has_valid_coordinates(selected)
+    admin_can_manage = is_admin()
+
+    st.write(
+        f"**Pemancar:** {selected.get('mux', '')}  \n"
+        f"**Wilayah:** {selected.get('wilayah', '')}, {selected.get('provinsi', '')}"
+    )
+    if has_saved_location:
+        st.success(
+            f"Koordinat tersimpan: {float(selected['latitude']):.6f}, "
+            f"{float(selected['longitude']):.6f}"
+        )
+        if not admin_can_manage:
+            st.warning("Titik ini sudah tersedia. Pengguna non-admin dapat melihat lokasinya, tetapi tidak dapat mengubahnya.")
+    else:
+        st.warning("Pemancar ini belum memiliki koordinat. Anda dapat menambahkan titiknya.")
+
+    if has_saved_location:
+        center_lat = float(selected["latitude"])
+        center_lon = float(selected["longitude"])
+        zoom = 14
+    else:
+        center_lat, center_lon, zoom = -2.5, 118.0, 5
+
+    try:
+        import folium
+        from streamlit_folium import st_folium
+        import html
+
+        point_map = folium.Map(location=[center_lat, center_lon], zoom_start=zoom,
+                               control_scale=True, tiles="OpenStreetMap")
+        folium.TileLayer(
+            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            attr="Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
+            name="Satelit", overlay=False, control=True, show=False
+        ).add_to(point_map)
+        if has_saved_location:
+            folium.Marker(
+                [center_lat, center_lon],
+                tooltip=f"Titik tersimpan: {html.escape(str(selected.get('mux', '')))}",
+                popup=folium.Popup(
+                    f"<b>{html.escape(str(selected.get('mux', '')))}</b><br>"
+                    f"{center_lat:.6f}, {center_lon:.6f}", max_width=260
+                ),
+                icon=folium.Icon(color="red", icon="tower-broadcast", prefix="fa")
+            ).add_to(point_map)
+        crosshair = """<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;pointer-events:none;color:#1769aa;font-size:32px;font-weight:bold;text-shadow:0 0 3px white,0 0 5px white">⊕</div>"""
+        point_map.get_root().html.add_child(folium.Element(crosshair))
+        folium.LayerControl(collapsed=True).add_to(point_map)
+        map_result = st_folium(
+            point_map, width=None, height=560, use_container_width=True,
+            key=f"add_transmitter_point_map_{selected_idx}_{'saved' if has_saved_location else 'new'}",
+            returned_objects=["center", "zoom"]
+        )
+        map_center = (map_result or {}).get("center") or {"lat": center_lat, "lng": center_lon}
+        try:
+            target_lat = float(map_center.get("lat", center_lat))
+            target_lon = float(map_center.get("lng", center_lon))
+        except (TypeError, ValueError, AttributeError):
+            target_lat, target_lon = center_lat, center_lon
+
+        st.caption(
+            f"Koordinat pada tanda bidik: {target_lat:.6f}, {target_lon:.6f}. "
+            "Geser peta dan gunakan zoom untuk menempatkan tanda bidik tepat pada pemancar."
+        )
+        can_save_location = admin_can_manage or not has_saved_location
+        save_label = "💾 Perbarui titik pemancar" if has_saved_location else "📍 Simpan titik pemancar"
+        if st.button(save_label, key="save_transmitter_point_page", disabled=not can_save_location):
+            if not (-11 <= target_lat <= 6 and 95 <= target_lon <= 141):
+                st.error("Titik berada di luar rentang wilayah Indonesia.")
+            elif has_saved_location and not admin_can_manage:
+                st.error("Hanya admin yang dapat mengubah titik yang sudah tersimpan.")
+            else:
+                prov, wilayah, mux = identity
+                ref = db.reference(f"siaran/{prov}/{wilayah}/{mux}")
+                before = ref.get()
+                if isinstance(before, list):
+                    before = {"siaran": before}
+                before = before if isinstance(before, dict) else {}
+                updated = {**before, "latitude": target_lat, "longitude": target_lon}
+                ref.set(updated)
+                write_audit_log(
+                    "update_coordinates" if has_saved_location else "add_coordinates",
+                    prov, wilayah, mux, before=before, after=updated
+                )
+                st.success("Titik pemancar berhasil disimpan ke Firebase.")
+                st.rerun()
+
+        if admin_can_manage and has_saved_location:
+            confirm_delete = st.checkbox(
+                f"Saya yakin ingin menghapus titik peta untuk {selected.get('mux', 'MUX')}",
+                key="confirm_delete_transmitter_point_page"
+            )
+            if st.button("🗑️ Hapus titik pemancar", key="delete_transmitter_point_page",
+                         disabled=not confirm_delete):
+                prov, wilayah, mux = identity
+                ref = db.reference(f"siaran/{prov}/{wilayah}/{mux}")
+                before = ref.get()
+                if isinstance(before, list):
+                    before = {"siaran": before}
+                before = before if isinstance(before, dict) else {}
+                updated = {k: v for k, v in before.items() if k not in {"latitude", "longitude"}}
+                ref.set(updated)
+                write_audit_log("delete_coordinates", prov, wilayah, mux, before=before, after=updated)
+                st.success("Titik pemancar dihapus; data kanal tetap tersimpan.")
+                st.rerun()
+
+    except Exception as map_error:
+        st.error(f"Peta pemilihan titik tidak dapat ditampilkan: {map_error}")
+
+
 def display_broadcast_map():
     if st.button("⬅️ Kembali ke Beranda", key="back_broadcast_map"):
         switch_page("beranda"); st.rerun()
@@ -830,7 +999,16 @@ def display_broadcast_map():
         ).add_to(fmap)
         # Pengelolaan data teknis dipindahkan ke halaman tersendiri.
         if selected_row is not None and logged_in:
-            if st.button("📡 Buka halaman Data Teknis Pemancar", key="open_transmitter_technical_page"):
+            point_col, technical_col = st.columns(2)
+            if point_col.button("📍 Buka halaman Tambah Titik Pemancar", key="open_add_transmitter_point_page"):
+                st.session_state["point_selected_identity"] = (
+                    selected_row.get("provinsi", ""),
+                    selected_row.get("wilayah", ""),
+                    selected_row.get("mux", ""),
+                )
+                switch_page("add_transmitter_point")
+                st.rerun()
+            if technical_col.button("📡 Buka halaman Data Teknis Pemancar", key="open_transmitter_technical_page"):
                 st.session_state["technical_selected_identity"] = (
                     selected_row.get("provinsi", ""),
                     selected_row.get("wilayah", ""),
@@ -989,14 +1167,9 @@ def display_broadcast_map():
                 popup=folium.Popup(popup, max_width=300)
             ).add_to(fmap)
 
-        if logged_in and selected_row is not None:
-            crosshair = """<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;pointer-events:none;color:#1769aa;font-size:30px;font-weight:bold;text-shadow:0 0 3px white,0 0 5px white">⊕</div>"""
-            fmap.get_root().html.add_child(folium.Element(crosshair))
-
-        map_result = st_folium(
+        st_folium(
             fmap, width=None, height=560, use_container_width=True,
-            key=map_component_key,
-            returned_objects=["center", "zoom"]
+            key=map_component_key
         )
         st.caption(
             f"{len(located)} titik pemancar dari database • {1 if selected_row else 0} pemancar dipilih • "
@@ -1005,57 +1178,7 @@ def display_broadcast_map():
             "lingkaran = laporan pengukuran aktual untuk MUX terpilih."
         )
 
-        current_center = (map_result or {}).get("center") or {"lat": center_lat, "lng": center_lon}
-        try:
-            target_lat = float(current_center.get("lat", center_lat))
-            target_lon = float(current_center.get("lng", center_lon))
-        except (TypeError, ValueError, AttributeError):
-            target_lat, target_lon = center_lat, center_lon
-
-        if logged_in and selected_row is not None:
-            st.subheader("📍 Kelola koordinat pemancar")
-            st.caption(f"Posisi tengah peta: {target_lat:.6f}, {target_lon:.6f}")
-            has_saved_location = selected_row.get("latitude") is not None and selected_row.get("longitude") is not None
-            can_save_location = admin_can_manage or not has_saved_location
-            save_label = "💾 Simpan posisi pemancar" if admin_can_manage else "📍 Tambahkan titik pemancar"
-            if st.button(save_label, key="save_map_center_point", disabled=not can_save_location):
-                if not (-11 <= target_lat <= 6 and 95 <= target_lon <= 141):
-                    st.error("Titik berada di luar rentang wilayah Indonesia.")
-                elif has_saved_location and not admin_can_manage:
-                    st.error("Hanya admin yang dapat mengubah titik yang sudah ada.")
-                else:
-                    r = selected_row
-                    ref = db.reference(f"siaran/{r['provinsi']}/{r['wilayah']}/{r['mux']}")
-                    before = ref.get()
-                    if isinstance(before, list):
-                        before = {"siaran": before}
-                    updated = {**(before or {}), "latitude": target_lat, "longitude": target_lon}
-                    ref.set(updated)
-                    write_audit_log(
-                        "update_coordinates" if has_saved_location else "add_coordinates",
-                        r["provinsi"], r["wilayah"], r["mux"], before=before, after=updated
-                    )
-                    st.success("Koordinat pemancar berhasil disimpan.")
-                    st.rerun()
-
-            if admin_can_manage:
-                confirm_delete = st.checkbox(
-                    f"Saya yakin ingin menghapus titik peta untuk {selected_row.get('mux', 'MUX')}",
-                    key="confirm_delete_transmitter_location", disabled=not has_saved_location
-                )
-                if st.button("🗑️ Hapus titik pemancar", key="delete_transmitter_location",
-                             disabled=(not has_saved_location or not confirm_delete)):
-                    r = selected_row
-                    ref = db.reference(f"siaran/{r['provinsi']}/{r['wilayah']}/{r['mux']}")
-                    before = ref.get()
-                    if isinstance(before, list):
-                        before = {"siaran": before}
-                    before = before if isinstance(before, dict) else {}
-                    updated = {k: v for k, v in before.items() if k not in {"latitude", "longitude"}}
-                    ref.set(updated)
-                    write_audit_log("delete_coordinates", r["provinsi"], r["wilayah"], r["mux"], before=before, after=updated)
-                    st.success("Titik pemancar dihapus; data kanal tetap tersimpan.")
-                    st.rerun()
+        # Pengelolaan dan penambahan koordinat dipisahkan ke halaman "Tambah Titik Pemancar".
 
         st.subheader("📡 Ringkasan model propagasi")
         if terrain_layers:
@@ -1332,6 +1455,7 @@ def display_sidebar():
             if logged_in:
                 menu_items.extend([
                     ("📡  Data Teknis Pemancar", "technical_data"),
+                    ("📍  Tambah Titik Pemancar", "add_transmitter_point"),
                     ("➕  Tambah Data Siaran", "add_data"),
                     ("👤  Profil Saya", "profile"),
                     ("👥  Profil Pengguna Lain", "other_users"),
@@ -2297,6 +2421,9 @@ elif st.session_state.halaman == "login":
 
 elif st.session_state.halaman == "technical_data":
     display_transmitter_technical_data_page()
+
+elif st.session_state.halaman == "add_transmitter_point":
+    display_add_transmitter_point_page()
 
 elif st.session_state.halaman == "report_data":
     display_report_page()

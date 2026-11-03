@@ -1620,6 +1620,259 @@ def display_sidebar():
     </style>
     """, unsafe_allow_html=True)
 
+    # Lapisan visual tambahan: tampilan website modern, tanpa mengubah alur Streamlit.
+    st.markdown("""
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Manrope:wght@500;600;700;800&display=swap');
+
+      :root {
+        --ktvdi-primary: #1769aa;
+        --ktvdi-primary-dark: #104b7d;
+        --ktvdi-accent: #13a6c7;
+        --ktvdi-border: rgba(100, 116, 139, .18);
+        --ktvdi-shadow: 0 12px 32px rgba(15, 45, 75, .07);
+      }
+
+      html, body, [class*="css"], [data-testid="stAppViewContainer"] {
+        font-family: 'DM Sans', sans-serif !important;
+      }
+      h1, h2, h3, h4, .ktvdi-brand-title, .ktvdi-hero-title {
+        font-family: 'Manrope', sans-serif !important;
+      }
+      [data-testid="stAppViewContainer"] {
+        background:
+          radial-gradient(ellipse at 0% 0%, rgba(19,166,199,.09), transparent 34%),
+          radial-gradient(ellipse at 100% 12%, rgba(23,105,170,.07), transparent 30%),
+          var(--background-color) !important;
+      }
+      .block-container {
+        max-width: 1380px !important;
+        padding-top: 1.25rem !important;
+        padding-bottom: 4rem !important;
+      }
+
+      /* Header dan hero */
+      .ktvdi-navbar, .ktvdi-brand {
+        border: 1px solid var(--ktvdi-border) !important;
+        box-shadow: var(--ktvdi-shadow) !important;
+        backdrop-filter: blur(14px);
+      }
+      .ktvdi-brand {
+        background: color-mix(in srgb, var(--secondary-background-color) 92%, transparent) !important;
+        border-radius: 18px !important;
+      }
+      .ktvdi-logo {
+        background: linear-gradient(145deg, #e0f2fe, #bfdbfe) !important;
+        box-shadow: inset 0 0 0 1px rgba(23,105,170,.08);
+      }
+      .ktvdi-hero {
+        min-height: 220px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: clamp(30px, 5vw, 58px) !important;
+        border: 1px solid rgba(255,255,255,.18);
+        border-radius: 26px !important;
+        background:
+          radial-gradient(circle at 82% 20%, rgba(255,255,255,.18), transparent 23%),
+          linear-gradient(120deg, #0b2948 0%, #135b91 52%, #0795b8 100%) !important;
+        box-shadow: 0 22px 48px rgba(12,67,112,.18) !important;
+      }
+      .ktvdi-hero-title {
+        max-width: 780px;
+        font-size: clamp(29px, 4.2vw, 48px) !important;
+        line-height: 1.12 !important;
+        letter-spacing: -.045em !important;
+      }
+      .ktvdi-hero-copy {
+        font-size: clamp(14px, 1.4vw, 16px) !important;
+        line-height: 1.8 !important;
+      }
+
+      /* Tipografi dan jarak */
+      h1, h2, h3 {
+        letter-spacing: -.035em !important;
+      }
+      [data-testid="stMarkdownContainer"] p {
+        line-height: 1.7;
+      }
+      [data-testid="stCaptionContainer"] {
+        opacity: .76;
+      }
+      hr {
+        border-color: var(--ktvdi-border) !important;
+        margin: 1.5rem 0 !important;
+      }
+
+      /* Kartu statistik dan kontainer */
+      [data-testid="stMetric"] {
+        min-height: 112px;
+        padding: 19px 20px !important;
+        border: 1px solid var(--ktvdi-border) !important;
+        border-radius: 18px !important;
+        background: var(--secondary-background-color) !important;
+        box-shadow: 0 8px 24px rgba(15,45,75,.045) !important;
+        transition: transform .2s ease, box-shadow .2s ease;
+      }
+      [data-testid="stMetric"]:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 14px 30px rgba(15,45,75,.09) !important;
+      }
+      [data-testid="stMetricLabel"] p {
+        font-size: 12px !important;
+        font-weight: 700 !important;
+        letter-spacing: .025em;
+      }
+      [data-testid="stMetricValue"] {
+        font-family: 'Manrope', sans-serif !important;
+        font-size: clamp(25px, 3vw, 34px) !important;
+        font-weight: 800 !important;
+      }
+      [data-testid="stVerticalBlockBorderWrapper"],
+      [data-testid="stExpander"] {
+        border: 1px solid var(--ktvdi-border) !important;
+        border-radius: 17px !important;
+        box-shadow: 0 6px 20px rgba(15,45,75,.035);
+        overflow: hidden;
+      }
+      [data-testid="stExpander"] summary {
+        font-weight: 700 !important;
+      }
+
+      /* Tombol */
+      [data-testid="stBaseButton-primary"],
+      [data-testid="stFormSubmitButton"] button {
+        min-height: 43px !important;
+        padding: 0 19px !important;
+        border: 0 !important;
+        border-radius: 12px !important;
+        color: white !important;
+        background: linear-gradient(135deg, var(--ktvdi-primary), #168fbe) !important;
+        box-shadow: 0 7px 17px rgba(23,105,170,.19) !important;
+        font-weight: 750 !important;
+        transition: transform .18s ease, filter .18s ease, box-shadow .18s ease;
+      }
+      [data-testid="stBaseButton-primary"]:hover,
+      [data-testid="stFormSubmitButton"] button:hover {
+        transform: translateY(-2px);
+        filter: brightness(1.06);
+        box-shadow: 0 11px 22px rgba(23,105,170,.25) !important;
+      }
+      [data-testid="stBaseButton-secondary"],
+      [data-testid="stPopover"] > button {
+        min-height: 42px !important;
+        border: 1px solid var(--ktvdi-border) !important;
+        border-radius: 12px !important;
+        font-weight: 650 !important;
+        transition: all .18s ease;
+      }
+      [data-testid="stBaseButton-secondary"]:hover {
+        border-color: rgba(23,105,170,.5) !important;
+        transform: translateY(-1px);
+      }
+
+      /* Input modern */
+      [data-testid="stTextInput"] input,
+      [data-testid="stTextArea"] textarea,
+      [data-testid="stNumberInput"] input,
+      [data-testid="stDateInput"] input,
+      [data-testid="stSelectbox"] [data-baseweb="select"] > div,
+      [data-testid="stMultiSelect"] [data-baseweb="select"] > div {
+        min-height: 44px;
+        border-radius: 12px !important;
+        border-color: var(--ktvdi-border) !important;
+        background: var(--secondary-background-color) !important;
+      }
+      [data-testid="stTextInput"] input:focus,
+      [data-testid="stTextArea"] textarea:focus {
+        border-color: var(--ktvdi-primary) !important;
+        box-shadow: 0 0 0 3px rgba(23,105,170,.11) !important;
+      }
+      [data-testid="stWidgetLabel"] p {
+        font-size: 13px !important;
+        font-weight: 700 !important;
+      }
+
+      /* Tabel, notifikasi, chatbot */
+      [data-testid="stDataFrame"],
+      [data-testid="stTable"] {
+        border: 1px solid var(--ktvdi-border);
+        border-radius: 14px;
+        overflow: hidden;
+      }
+      [data-testid="stAlert"] {
+        border-radius: 14px !important;
+        border-width: 1px !important;
+      }
+      [data-testid="stChatMessage"] {
+        border: 1px solid var(--ktvdi-border) !important;
+        border-radius: 16px !important;
+        padding: 13px !important;
+      }
+      [data-testid="stChatInput"] textarea {
+        border-radius: 14px !important;
+      }
+
+      /* Navigasi popover */
+      [data-testid="stPopoverBody"] {
+        border: 1px solid var(--ktvdi-border) !important;
+        border-radius: 17px !important;
+        box-shadow: 0 18px 45px rgba(15,45,75,.16) !important;
+        padding: 14px !important;
+      }
+      [data-testid="stPopoverBody"] [data-testid="stBaseButton-secondary"] {
+        width: 100%;
+        justify-content: flex-start !important;
+        border: 0 !important;
+        border-radius: 10px !important;
+      }
+
+      /* Tampilan mobile */
+      @media (max-width: 760px) {
+        .block-container {
+          padding: .8rem 1rem 2.5rem !important;
+        }
+        .ktvdi-brand {
+          padding: 10px !important;
+          gap: 8px !important;
+        }
+        .ktvdi-logo {
+          width: 39px !important;
+          height: 39px !important;
+          border-radius: 12px !important;
+          font-size: 21px !important;
+        }
+        .ktvdi-brand-title {
+          font-size: 11px !important;
+          line-height: 1.35;
+        }
+        .ktvdi-brand-sub {
+          font-size: 10px !important;
+        }
+        .ktvdi-hero {
+          min-height: 190px;
+          padding: 25px 21px !important;
+          border-radius: 19px !important;
+        }
+        [data-testid="stMetric"] {
+          min-height: 90px;
+          padding: 12px !important;
+        }
+        [data-testid="stMetricValue"] {
+          font-size: 23px !important;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          scroll-behavior: auto !important;
+          transition-duration: .01ms !important;
+          animation-duration: .01ms !important;
+        }
+      }
+    </style>
+    """, unsafe_allow_html=True)
+
     logged_in = bool(st.session_state.get("login"))
     if logged_in:
         users = db.reference("users").get() or {}

@@ -41,3 +41,8 @@ Ini adalah **migrasi bertahap yang sudah diperluas**, tetapi belum boleh diangga
 - Aksi tulis memeriksa login/peran di backend, tidak hanya mengandalkan status UI browser.
 - Untuk edit/hapus data siaran, pemilik data atau admin yang diizinkan. Perubahan ini memperketat akses dibanding tombol UI lama yang belum selalu membatasi hak akses.
 - Jangan tampilkan isi exception konfigurasi atau secrets kepada pengunjung.
+
+
+## Pemulihan fitur Peta Pemancar
+
+Antarmuka Leaflet kini menyediakan kontrol layer peta jalan/satelit dan overlay prediksi DEM, kontrol GPS browser (memerlukan HTTPS dan izin lokasi), filter provinsi/wilayah/pencarian MUX atau kanal, pemilihan marker langsung, zoom ke pemancar/area prediksi, skala peta, koordinat pointer, pengukuran jarak multi-titik, marker pengukuran komunitas, dan panel detail/analisis pemancar. Filter hanya menyaring marker yang terlihat dan tidak mengubah data Firebase.

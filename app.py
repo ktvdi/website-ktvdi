@@ -689,7 +689,7 @@ def display_broadcast_map():
                 tooltip=f"{'Terpilih — ' if is_selected else ''}Pemancar: {mux}",
                 popup=folium.Popup(popup_html, max_width=280),
                 icon=folium.Icon(
-                    color="red" if is_selected else "blue",
+                    color="red",
                     icon="tower-broadcast", prefix="fa"
                 )
             ).add_to(fmap)
@@ -741,7 +741,7 @@ def display_broadcast_map():
         st.caption(
             f"{len(located)} titik pemancar dari database • {1 if selected_row else 0} pemancar dipilih • "
             f"{len(selected_measurements)} laporan pengukuran untuk MUX terpilih. "
-            "Titik merah = pemancar terpilih; titik biru = pemancar lain; overlay berwarna = prediksi terrain hanya untuk pemancar terpilih; "
+            "Semua titik pemancar berwarna merah; overlay berwarna = prediksi terrain hanya untuk pemancar terpilih; "
             "lingkaran = laporan pengukuran aktual untuk MUX terpilih."
         )
 

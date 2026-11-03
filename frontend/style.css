@@ -36,3 +36,19 @@
 .transmitter-popup b{margin-top:4px;font-size:12px}
 .transmitter-popup ul{margin:2px 0 0;padding-left:16px;max-height:76px;overflow-y:auto}
 .transmitter-popup .popup-terrain{font-size:11px;margin-top:5px;padding-top:5px}
+
+/* Navigasi akun dan form simulasi terrain */
+.nav button.logout-nav{background:#fff1f0;color:#b42318;border:1px solid #f2b8b5;font-weight:750}
+.nav button.logout-nav:hover,.nav button.logout-nav.active{background:#b42318;color:#fff;border-color:#b42318}
+.welcome-user{display:inline-block!important;margin:8px 0 0;padding:7px 12px;border:1px solid #ffffff66;border-radius:10px;background:#ffffff18;color:#fff!important}
+.terrain-simulation{margin-top:20px;padding:18px;border:1px solid var(--line);border-radius:14px;background:#f8fbfd}
+.terrain-simulation h3{margin:0 0 4px}
+.simulation-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:8px;align-items:end}
+.simulation-grid .field{margin:4px 0}
+.simulation-grid .action{grid-column:1/-1;justify-self:start}
+.password-toggle{border:1px solid #c8dce8;background:#f0f7fb;color:#075b8c;border-radius:8px;padding:7px 10px;cursor:pointer}
+.leaflet-popup-content{max-width:230px!important}
+.transmitter-popup{max-width:225px;font-size:11.5px;line-height:1.3}
+.transmitter-popup b{font-size:11.5px}
+.transmitter-popup ul{max-height:90px}
+@media(max-width:720px){.simulation-grid{grid-template-columns:1fr 1fr}.simulation-grid .action{grid-column:1/-1}}

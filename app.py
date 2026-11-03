@@ -673,20 +673,34 @@ def display_broadcast_map():
         except (ImportError, AttributeError):
             st.caption("Kontrol GPS tidak tersedia. Perbarui Folium.")
 
-        # Hanya tampilkan penanda pemancar yang sedang dipilih.
-        for r in ([selected_row] if selected_row else []):
+        # Tampilkan seluruh titik pemancar dari database. Hanya pemancar
+        # terpilih yang dipakai untuk menghitung dan menampilkan overlay terrain.
+        for r in located:
+            is_selected = selected_row is not None and r is selected_row
             mux = html.escape(str(r.get("mux", "")))
             wilayah = html.escape(str(r.get("wilayah", "")))
             popup_html = (
                 f"<b>Wilayah:</b> {wilayah}<br><b>MUX:</b> {mux}<br>"
                 f"<b>Koordinat:</b> {r['latitude']:.5f}, {r['longitude']:.5f}"
+                + ("<br><b>Status:</b> Pemancar terpilih — prediksi terrain aktif" if is_selected else "")
             )
             folium.Marker(
                 [r["latitude"], r["longitude"]],
-                tooltip=f"Pemancar: {mux}",
+                tooltip=f"{'Terpilih — ' if is_selected else ''}Pemancar: {mux}",
                 popup=folium.Popup(popup_html, max_width=280),
-                icon=folium.Icon(color="red", icon="tower-broadcast", prefix="fa")
+                icon=folium.Icon(
+                    color="red" if is_selected else "blue",
+                    icon="tower-broadcast", prefix="fa"
+                )
             ).add_to(fmap)
+
+        # Awali peta dengan seluruh lokasi pemancar dalam database terlihat.
+        # Overlay terrain tetap hanya dihitung untuk selected_row.
+        if len(located) > 1:
+            fmap.fit_bounds(
+                [[r["latitude"], r["longitude"]] for r in located],
+                padding=(24, 24)
+            )
 
         # Pengukuran aktual hanya untuk MUX yang sedang dipilih.
         selected_measurements = [
@@ -725,8 +739,10 @@ def display_broadcast_map():
             returned_objects=["center", "zoom"]
         )
         st.caption(
-            f"{1 if selected_row else 0} pemancar terpilih • {len(selected_measurements)} laporan pengukuran untuk MUX terpilih. "
-            "Titik merah = pemancar terpilih; overlay berwarna = prediksi terrain; lingkaran = laporan pengukuran aktual (hijau/kuning/merah berdasarkan Quality)."
+            f"{len(located)} titik pemancar dari database • {1 if selected_row else 0} pemancar dipilih • "
+            f"{len(selected_measurements)} laporan pengukuran untuk MUX terpilih. "
+            "Titik merah = pemancar terpilih; titik biru = pemancar lain; overlay berwarna = prediksi terrain hanya untuk pemancar terpilih; "
+            "lingkaran = laporan pengukuran aktual untuk MUX terpilih."
         )
 
         current_center = (map_result or {}).get("center") or {"lat": center_lat, "lng": center_lon}

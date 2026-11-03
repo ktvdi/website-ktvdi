@@ -226,6 +226,65 @@ def display_admin_dashboard():
         st.info("Belum ada riwayat perubahan.")
     display_restore_history()
 
+def _identity_token(*parts, prefix):
+    """Buat ID deterministik dari komponen identitas yang dinormalisasi."""
+    normalized = [re.sub(r"\s+", " ", str(part or "").strip()).casefold() for part in parts]
+    digest = hashlib.sha256("|".join(normalized).encode("utf-8")).hexdigest()[:12].upper()
+    return f"{prefix}-{digest}"
+
+
+def build_broadcast_identity(provinsi, wilayah, mux):
+    """
+    ID kompatibel dengan struktur Firebase saat ini.
+    TX berbasis provinsi/wilayah; MUX berbasis TX + nama MUX.
+    Untuk membedakan beberapa menara dalam satu wilayah, kelak perlu site_code.
+    """
+    transmitter_id = _identity_token(provinsi, wilayah, prefix="TX")
+    mux_id = _identity_token(transmitter_id, mux, prefix="MUX")
+    return transmitter_id, mux_id
+
+
+def migrate_broadcast_identity_ids():
+    """Backfill ID deterministik tanpa mengubah path atau menghapus data lama."""
+    broadcast_data = db.reference("siaran").get() or {}
+    measurement_data = db.reference("signal_measurements").get() or {}
+    updated_broadcasts = 0
+    updated_measurements = 0
+
+    for provinsi, areas in (broadcast_data or {}).items():
+        for wilayah, muxes in (areas or {}).items():
+            for mux, details in (muxes or {}).items():
+                transmitter_id, mux_id = build_broadcast_identity(provinsi, wilayah, mux)
+                was_legacy_list = isinstance(details, list)
+                if was_legacy_list:
+                    details = {"siaran": details}
+                details = details or {}
+                if was_legacy_list:
+                    db.reference(f"siaran/{provinsi}/{wilayah}/{mux}").set({
+                        **details, "transmitter_id": transmitter_id, "mux_id": mux_id
+                    })
+                    updated_broadcasts += 1
+                elif details.get("transmitter_id") != transmitter_id or details.get("mux_id") != mux_id:
+                    db.reference(f"siaran/{provinsi}/{wilayah}/{mux}").update({
+                        "transmitter_id": transmitter_id, "mux_id": mux_id
+                    })
+                    updated_broadcasts += 1
+
+    for provinsi, areas in (measurement_data or {}).items():
+        for wilayah, muxes in (areas or {}).items():
+            for mux, entries in (muxes or {}).items():
+                transmitter_id, mux_id = build_broadcast_identity(provinsi, wilayah, mux)
+                for measurement_key, measurement in (entries or {}).items():
+                    if not isinstance(measurement, dict):
+                        continue
+                    if measurement.get("transmitter_id") != transmitter_id or measurement.get("mux_id") != mux_id:
+                        db.reference(
+                            f"signal_measurements/{provinsi}/{wilayah}/{mux}/{measurement_key}"
+                        ).update({"transmitter_id": transmitter_id, "mux_id": mux_id})
+                        updated_measurements += 1
+    return updated_broadcasts, updated_measurements
+
+
 def get_all_broadcast_rows():
     """Flatten data siaran untuk pencarian, statistik, dan peta."""
     all_data = db.reference("siaran").get() or {}
@@ -237,7 +296,10 @@ def get_all_broadcast_rows():
                     details = {"siaran": details}
                 details = details or {}
                 channels = details.get("siaran", []) or []
+                transmitter_id, mux_id = build_broadcast_identity(prov, wilayah, mux)
                 rows.append({"provinsi": prov, "wilayah": wilayah, "mux": mux,
+                             "transmitter_id": details.get("transmitter_id") or transmitter_id,
+                             "mux_id": details.get("mux_id") or mux_id,
                              "siaran": channels, "detail": details,
                              "latitude": details.get("latitude"), "longitude": details.get("longitude")})
     return rows
@@ -599,9 +661,12 @@ def _load_signal_measurements():
                     try:
                         lat, lon = float(item["latitude"]), float(item["longitude"])
                         if -11 <= lat <= 6 and 95 <= lon <= 141:
+                            transmitter_id, mux_id = build_broadcast_identity(provinsi, wilayah, mux)
                             records.append({
                                 **item, "id": measurement_id, "provinsi": provinsi,
                                 "wilayah": wilayah, "mux": mux,
+                                "transmitter_id": item.get("transmitter_id") or transmitter_id,
+                                "mux_id": item.get("mux_id") or mux_id,
                                 "latitude": lat, "longitude": lon
                             })
                     except (KeyError, TypeError, ValueError):
@@ -936,7 +1001,9 @@ def display_broadcast_map():
     st.header("🗺️ Peta Pemancar & Kualitas Sinyal TV Digital")
     st.markdown(
         "Peta ini menggabungkan **lokasi pemancar**, **estimasi propagasi sederhana**, "
-        "dan **hasil pengukuran aktual yang dilaporkan pengguna dari menu TV/STB**."
+        "dan **hasil pengukuran aktual yang dilaporkan pengguna dari menu TV/STB**. "
+        "Setiap entri wilayah memiliki ID pemancar dan ID MUX deterministik agar "
+        "pengukuran bernama MUX sama tidak tercampur antarwilayah."
     )
     st.warning(
         "Catatan akurasi: browser Streamlit tidak dapat membaca tuner DVB-T2 secara langsung. "
@@ -970,7 +1037,11 @@ def display_broadcast_map():
         selected_row = None
         terrain_layers = []
         if located:
-            labels = [f"{r.get('provinsi', '')} / {r.get('wilayah', '')} / {r.get('mux', '')}" for r in located]
+            labels = [
+                f"{r.get('provinsi', '')} / {r.get('wilayah', '')} / {r.get('mux', '')} "
+                f"[{r.get('mux_id', '')}]"
+                for r in located
+            ]
             selected_idx = st.selectbox(
                 "Pilih MUX / pemancar", range(len(located)),
                 format_func=lambda i: labels[i], key="map_mux_to_position"
@@ -985,6 +1056,21 @@ def display_broadcast_map():
             st.warning("Belum ada pemancar dengan koordinat valid.")
         if admin_can_manage:
             st.info("Admin dapat mengelola koordinat pemancar. Semua pengguna yang login dapat mengirim hasil pengukuran sinyal.")
+            with st.expander("🧩 Pemeliharaan identitas unik MUX/pemancar"):
+                st.caption(
+                    "Mengisi transmitter_id dan mux_id pada data siaran serta pengukuran lama. "
+                    "Path Firebase lama dipertahankan; tidak ada data yang dihapus."
+                )
+                if st.button("Buat/perbarui ID unik untuk data lama", key="backfill_broadcast_identity_ids"):
+                    try:
+                        count_broadcasts, count_measurements = migrate_broadcast_identity_ids()
+                        st.success(
+                            f"Selesai. {count_broadcasts} data MUX/pemancar dan "
+                            f"{count_measurements} pengukuran diperbarui."
+                        )
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Migrasi ID gagal: {exc}")
         elif logged_in:
             st.info("Pilih pemancar untuk melihat prediksi terrain, menambahkan data teknis, dan melaporkan pengukuran. Gunakan kontrol GPS untuk menuju lokasi Anda.")
         else:
@@ -1143,7 +1229,9 @@ def display_broadcast_map():
         # Pengukuran aktual hanya untuk MUX yang sedang dipilih.
         selected_measurements = [
             m for m in measurements
-            if selected_row and str(m.get("mux", "")) == str(selected_row.get("mux", ""))
+            if selected_row
+            and m.get("transmitter_id") == selected_row.get("transmitter_id")
+            and m.get("mux_id") == selected_row.get("mux_id")
         ]
         for m in selected_measurements[:500]:
             quality = m.get("quality")
@@ -1154,6 +1242,8 @@ def display_broadcast_map():
                 color = "blue"
             popup = (
                 f"<b>Pengukuran pengguna</b><br>MUX: {html.escape(str(m.get('mux', '')))}"
+                f"<br>ID Pemancar: {html.escape(str(m.get('transmitter_id', '-')))}"
+                f"<br>ID MUX: {html.escape(str(m.get('mux_id', '-')))}"
                 f"<br>Wilayah: {html.escape(str(m.get('wilayah', '')))}"
                 f"<br>Strength: {html.escape(str(m.get('strength', '-')))}%"
                 f"<br>Quality: {html.escape(str(m.get('quality', '-')))}%"
@@ -1215,6 +1305,10 @@ def display_broadcast_map():
             )
             with st.form("signal_measurement_form", clear_on_submit=True):
                 st.caption(f"MUX terpilih: **{selected_row['mux']}** — {selected_row['wilayah']}, {selected_row['provinsi']}")
+                st.caption(
+                    f"ID pemancar: `{selected_row['transmitter_id']}` • "
+                    f"ID MUX: `{selected_row['mux_id']}`"
+                )
                 st.caption(f"Koordinat laporan mengikuti posisi tengah peta: {target_lat:.6f}, {target_lon:.6f}. Geser peta atau gunakan GPS terlebih dahulu.")
                 strength = st.number_input("Signal Strength (%)", min_value=0, max_value=100, value=0, step=1)
                 quality = st.number_input("Signal Quality (%)", min_value=0, max_value=100, value=0, step=1)
@@ -1239,6 +1333,8 @@ def display_broadcast_map():
                             username = st.session_state.username
                             user_data = db.reference(f"users/{username}").get() or {}
                             measurement = {
+                                "transmitter_id": selected_row["transmitter_id"],
+                                "mux_id": selected_row["mux_id"],
                                 "username": username,
                                 "display_name": user_data.get("nama", username),
                                 "latitude": target_lat,
@@ -1269,14 +1365,15 @@ def display_broadcast_map():
             filtered = [
                 m for m in measurements
                 if selected_row is None or (
-                    m.get("provinsi") == selected_row.get("provinsi")
-                    and m.get("wilayah") == selected_row.get("wilayah")
-                    and m.get("mux") == selected_row.get("mux")
+                    m.get("transmitter_id") == selected_row.get("transmitter_id")
+                    and m.get("mux_id") == selected_row.get("mux_id")
                 )
             ]
             if filtered:
                 table_rows = [{
                     "Waktu": m.get("timestamp", "-"),
+                    "ID Pemancar": m.get("transmitter_id", "-"),
+                    "ID MUX": m.get("mux_id", "-"),
                     "MUX": m.get("mux", "-"),
                     "Wilayah": m.get("wilayah", "-"),
                     "Strength (%)": m.get("strength", "-"),

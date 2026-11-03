@@ -2,7 +2,12 @@
 from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
-from backend import initialize_firebase, handle_event, get_stats, get_all_broadcast_rows, get_recent_changes, get_latest_transmitter_update_timestamp
+from backend import initialize_firebase, handle_event, get_stats, get_all_broadcast_rows, get_recent_changes
+try:
+    from backend import get_latest_transmitter_update_timestamp
+except ImportError:
+    def get_latest_transmitter_update_timestamp():
+        return None
 
 st.set_page_config(page_title="KTVDI", page_icon="📡", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""

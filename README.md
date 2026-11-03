@@ -46,3 +46,9 @@ Ini adalah **migrasi bertahap yang sudah diperluas**, tetapi belum boleh diangga
 ## Pemulihan fitur Peta Pemancar
 
 Antarmuka Leaflet kini menyediakan kontrol layer peta jalan/satelit dan overlay prediksi DEM, kontrol GPS browser (memerlukan HTTPS dan izin lokasi), filter provinsi/wilayah/pencarian MUX atau kanal, pemilihan marker langsung, zoom ke pemancar/area prediksi, skala peta, koordinat pointer, pengukuran jarak multi-titik, marker pengukuran komunitas, dan panel detail/analisis pemancar. Filter hanya menyaring marker yang terlihat dan tidak mengubah data Firebase.
+
+
+CATATAN PERBAIKAN IMPORT TIMESTAMP
+Unggah dan timpa app.py serta backend.py dari paket ini secara bersamaan.
+Fungsi get_latest_transmitter_update_timestamp() berada di backend.py.
+Setelah commit, lakukan Reboot app di Streamlit Cloud.

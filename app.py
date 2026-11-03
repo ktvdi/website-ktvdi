@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import firebase_admin
 import hashlib
 import smtplib
@@ -1617,261 +1618,45 @@ def display_sidebar():
       .ktvdi-hero-copy {position:relative;z-index:1;max-width:660px;margin:0;color:rgba(255,255,255,.82);font-size:14px;line-height:1.7;}
       .ktvdi-section-note {font-size:13px;opacity:.72;margin-top:-8px;margin-bottom:16px;}
       @media(max-width:640px){.block-container{padding-left:1rem !important;padding-right:1rem !important;}.ktvdi-brand{padding:10px 11px;gap:9px;}.ktvdi-logo{width:39px;height:39px;font-size:22px;border-radius:11px;}.ktvdi-hero{padding:23px 20px;border-radius:17px;}[data-testid="stMetric"]{padding:12px;}}
+
+      /* KTVDI responsive website design system */
+      :root{--ktvdi-ink:#10243a;--ktvdi-muted:#64748b;--ktvdi-line:rgba(100,116,139,.18);--ktvdi-accent:#0878bd;--ktvdi-shadow:0 14px 40px rgba(15,45,75,.075)}
+      html{scroll-behavior:smooth}
+      body,[data-testid="stAppViewContainer"]{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important}
+      [data-testid="stAppViewContainer"]{background:radial-gradient(circle at 88% 4%,rgba(14,165,233,.075),transparent 24rem),radial-gradient(circle at 2% 22%,rgba(37,99,235,.045),transparent 26rem),var(--background-color)!important}
+      .block-container{max-width:1280px!important;padding-top:1.1rem!important;padding-bottom:4rem!important}
+      [data-testid="stVerticalBlock"]{gap:.9rem}
+      h1,h2,h3,h4{color:var(--ktvdi-ink)} h1{line-height:1.12!important}
+      p,li{line-height:1.68}
+      [data-testid="stCaptionContainer"]{color:var(--ktvdi-muted)}
+      hr{border-color:var(--ktvdi-line)!important;margin:1.35rem 0!important}
+      .ktvdi-navbar{backdrop-filter:blur(14px)}
+      [data-testid="stBaseButton-primary"] button,[data-testid="stBaseButton-secondary"] button,[data-testid="stDownloadButton"] button{min-height:2.65rem;transition:all .2s ease!important}
+      [data-testid="stBaseButton-primary"] button:hover,[data-testid="stDownloadButton"] button:hover{transform:translateY(-2px);box-shadow:0 9px 22px rgba(8,120,189,.2)!important}
+      a{color:var(--ktvdi-accent)!important;text-decoration-thickness:1px;text-underline-offset:3px}
+      [data-testid="stTextInput"] label,[data-testid="stTextArea"] label,[data-testid="stSelectbox"] label,[data-testid="stNumberInput"] label,[data-testid="stDateInput"] label,[data-testid="stRadio"] label,[data-testid="stCheckbox"] label{font-weight:650!important;color:var(--ktvdi-ink)!important}
+      [data-testid="stTextInput"] input,[data-testid="stTextArea"] textarea,[data-testid="stNumberInput"] input,[data-testid="stDateInput"] input{min-height:2.8rem;border:1px solid var(--ktvdi-line)!important;background:var(--background-color)!important;transition:border-color .18s ease,box-shadow .18s ease}
+      [data-testid="stTextInput"] input:focus,[data-testid="stTextArea"] textarea:focus,[data-testid="stNumberInput"] input:focus,[data-testid="stDateInput"] input:focus{border-color:var(--ktvdi-accent)!important;box-shadow:0 0 0 3px rgba(8,120,189,.12)!important}
+      [data-testid="stSelectbox"] [data-baseweb="select"]>div{min-height:2.8rem;border-color:var(--ktvdi-line)!important}
+      [data-testid="stForm"]{padding:clamp(16px,2.5vw,26px);border:1px solid var(--ktvdi-line);border-radius:18px;background:var(--secondary-background-color);box-shadow:var(--ktvdi-shadow)}
+      [data-testid="stMetric"]{min-height:105px;display:flex;flex-direction:column;justify-content:center;border:1px solid var(--ktvdi-line)!important;box-shadow:var(--ktvdi-shadow)!important;transition:transform .2s ease,box-shadow .2s ease}
+      [data-testid="stMetric"]:hover{transform:translateY(-3px);box-shadow:0 18px 42px rgba(15,45,75,.11)!important}
+      [data-testid="stDataFrame"],[data-testid="stTable"]{border:1px solid var(--ktvdi-line)!important;border-radius:15px!important;box-shadow:0 8px 25px rgba(15,45,75,.045)}
+      [data-testid="stExpander"]{border:1px solid var(--ktvdi-line)!important;border-radius:15px!important;box-shadow:0 5px 18px rgba(15,45,75,.035)}
+      [data-testid="stAlert"]{border-radius:14px!important}
+      [data-testid="stChatMessage"]{padding:14px 16px!important;border:1px solid var(--ktvdi-line)!important;border-radius:16px!important;box-shadow:0 5px 18px rgba(15,45,75,.035)}
+      .ktvdi-hero{border:1px solid rgba(255,255,255,.16);background:radial-gradient(circle at 88% 20%,rgba(255,255,255,.17),transparent 16rem),linear-gradient(118deg,#092b4b 0%,#075b94 52%,#0798b8 100%)!important}
+      .ktvdi-section-note{color:var(--ktvdi-muted);letter-spacing:.005em}
+      [data-testid="stMainBlockContainer"]{animation:ktvdi-enter .38s ease both}
+      @keyframes ktvdi-enter{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+      @media(max-width:760px){.block-container{padding-left:1rem!important;padding-right:1rem!important}[data-testid="stMetric"]{min-height:90px;padding:12px!important}[data-testid="stMetricValue"]{font-size:1.4rem!important}[data-testid="stForm"]{padding:15px}[data-testid="stHorizontalBlock"]{gap:.55rem!important}[data-testid="stChatMessage"]{padding:11px!important}}
+      @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
     </style>
     """, unsafe_allow_html=True)
 
-    # Lapisan visual tambahan: tampilan website modern, tanpa mengubah alur Streamlit.
-    st.markdown("""
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Manrope:wght@500;600;700;800&display=swap');
-
-      :root {
-        --ktvdi-primary: #1769aa;
-        --ktvdi-primary-dark: #104b7d;
-        --ktvdi-accent: #13a6c7;
-        --ktvdi-border: rgba(100, 116, 139, .18);
-        --ktvdi-shadow: 0 12px 32px rgba(15, 45, 75, .07);
-      }
-
-      html, body, [class*="css"], [data-testid="stAppViewContainer"] {
-        font-family: 'DM Sans', sans-serif !important;
-      }
-      h1, h2, h3, h4, .ktvdi-brand-title, .ktvdi-hero-title {
-        font-family: 'Manrope', sans-serif !important;
-      }
-      [data-testid="stAppViewContainer"] {
-        background:
-          radial-gradient(ellipse at 0% 0%, rgba(19,166,199,.09), transparent 34%),
-          radial-gradient(ellipse at 100% 12%, rgba(23,105,170,.07), transparent 30%),
-          var(--background-color) !important;
-      }
-      .block-container {
-        max-width: 1380px !important;
-        padding-top: 1.25rem !important;
-        padding-bottom: 4rem !important;
-      }
-
-      /* Header dan hero */
-      .ktvdi-navbar, .ktvdi-brand {
-        border: 1px solid var(--ktvdi-border) !important;
-        box-shadow: var(--ktvdi-shadow) !important;
-        backdrop-filter: blur(14px);
-      }
-      .ktvdi-brand {
-        background: color-mix(in srgb, var(--secondary-background-color) 92%, transparent) !important;
-        border-radius: 18px !important;
-      }
-      .ktvdi-logo {
-        background: linear-gradient(145deg, #e0f2fe, #bfdbfe) !important;
-        box-shadow: inset 0 0 0 1px rgba(23,105,170,.08);
-      }
-      .ktvdi-hero {
-        min-height: 220px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        padding: clamp(30px, 5vw, 58px) !important;
-        border: 1px solid rgba(255,255,255,.18);
-        border-radius: 26px !important;
-        background:
-          radial-gradient(circle at 82% 20%, rgba(255,255,255,.18), transparent 23%),
-          linear-gradient(120deg, #0b2948 0%, #135b91 52%, #0795b8 100%) !important;
-        box-shadow: 0 22px 48px rgba(12,67,112,.18) !important;
-      }
-      .ktvdi-hero-title {
-        max-width: 780px;
-        font-size: clamp(29px, 4.2vw, 48px) !important;
-        line-height: 1.12 !important;
-        letter-spacing: -.045em !important;
-      }
-      .ktvdi-hero-copy {
-        font-size: clamp(14px, 1.4vw, 16px) !important;
-        line-height: 1.8 !important;
-      }
-
-      /* Tipografi dan jarak */
-      h1, h2, h3 {
-        letter-spacing: -.035em !important;
-      }
-      [data-testid="stMarkdownContainer"] p {
-        line-height: 1.7;
-      }
-      [data-testid="stCaptionContainer"] {
-        opacity: .76;
-      }
-      hr {
-        border-color: var(--ktvdi-border) !important;
-        margin: 1.5rem 0 !important;
-      }
-
-      /* Kartu statistik dan kontainer */
-      [data-testid="stMetric"] {
-        min-height: 112px;
-        padding: 19px 20px !important;
-        border: 1px solid var(--ktvdi-border) !important;
-        border-radius: 18px !important;
-        background: var(--secondary-background-color) !important;
-        box-shadow: 0 8px 24px rgba(15,45,75,.045) !important;
-        transition: transform .2s ease, box-shadow .2s ease;
-      }
-      [data-testid="stMetric"]:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 14px 30px rgba(15,45,75,.09) !important;
-      }
-      [data-testid="stMetricLabel"] p {
-        font-size: 12px !important;
-        font-weight: 700 !important;
-        letter-spacing: .025em;
-      }
-      [data-testid="stMetricValue"] {
-        font-family: 'Manrope', sans-serif !important;
-        font-size: clamp(25px, 3vw, 34px) !important;
-        font-weight: 800 !important;
-      }
-      [data-testid="stVerticalBlockBorderWrapper"],
-      [data-testid="stExpander"] {
-        border: 1px solid var(--ktvdi-border) !important;
-        border-radius: 17px !important;
-        box-shadow: 0 6px 20px rgba(15,45,75,.035);
-        overflow: hidden;
-      }
-      [data-testid="stExpander"] summary {
-        font-weight: 700 !important;
-      }
-
-      /* Tombol */
-      [data-testid="stBaseButton-primary"],
-      [data-testid="stFormSubmitButton"] button {
-        min-height: 43px !important;
-        padding: 0 19px !important;
-        border: 0 !important;
-        border-radius: 12px !important;
-        color: white !important;
-        background: linear-gradient(135deg, var(--ktvdi-primary), #168fbe) !important;
-        box-shadow: 0 7px 17px rgba(23,105,170,.19) !important;
-        font-weight: 750 !important;
-        transition: transform .18s ease, filter .18s ease, box-shadow .18s ease;
-      }
-      [data-testid="stBaseButton-primary"]:hover,
-      [data-testid="stFormSubmitButton"] button:hover {
-        transform: translateY(-2px);
-        filter: brightness(1.06);
-        box-shadow: 0 11px 22px rgba(23,105,170,.25) !important;
-      }
-      [data-testid="stBaseButton-secondary"],
-      [data-testid="stPopover"] > button {
-        min-height: 42px !important;
-        border: 1px solid var(--ktvdi-border) !important;
-        border-radius: 12px !important;
-        font-weight: 650 !important;
-        transition: all .18s ease;
-      }
-      [data-testid="stBaseButton-secondary"]:hover {
-        border-color: rgba(23,105,170,.5) !important;
-        transform: translateY(-1px);
-      }
-
-      /* Input modern */
-      [data-testid="stTextInput"] input,
-      [data-testid="stTextArea"] textarea,
-      [data-testid="stNumberInput"] input,
-      [data-testid="stDateInput"] input,
-      [data-testid="stSelectbox"] [data-baseweb="select"] > div,
-      [data-testid="stMultiSelect"] [data-baseweb="select"] > div {
-        min-height: 44px;
-        border-radius: 12px !important;
-        border-color: var(--ktvdi-border) !important;
-        background: var(--secondary-background-color) !important;
-      }
-      [data-testid="stTextInput"] input:focus,
-      [data-testid="stTextArea"] textarea:focus {
-        border-color: var(--ktvdi-primary) !important;
-        box-shadow: 0 0 0 3px rgba(23,105,170,.11) !important;
-      }
-      [data-testid="stWidgetLabel"] p {
-        font-size: 13px !important;
-        font-weight: 700 !important;
-      }
-
-      /* Tabel, notifikasi, chatbot */
-      [data-testid="stDataFrame"],
-      [data-testid="stTable"] {
-        border: 1px solid var(--ktvdi-border);
-        border-radius: 14px;
-        overflow: hidden;
-      }
-      [data-testid="stAlert"] {
-        border-radius: 14px !important;
-        border-width: 1px !important;
-      }
-      [data-testid="stChatMessage"] {
-        border: 1px solid var(--ktvdi-border) !important;
-        border-radius: 16px !important;
-        padding: 13px !important;
-      }
-      [data-testid="stChatInput"] textarea {
-        border-radius: 14px !important;
-      }
-
-      /* Navigasi popover */
-      [data-testid="stPopoverBody"] {
-        border: 1px solid var(--ktvdi-border) !important;
-        border-radius: 17px !important;
-        box-shadow: 0 18px 45px rgba(15,45,75,.16) !important;
-        padding: 14px !important;
-      }
-      [data-testid="stPopoverBody"] [data-testid="stBaseButton-secondary"] {
-        width: 100%;
-        justify-content: flex-start !important;
-        border: 0 !important;
-        border-radius: 10px !important;
-      }
-
-      /* Tampilan mobile */
-      @media (max-width: 760px) {
-        .block-container {
-          padding: .8rem 1rem 2.5rem !important;
-        }
-        .ktvdi-brand {
-          padding: 10px !important;
-          gap: 8px !important;
-        }
-        .ktvdi-logo {
-          width: 39px !important;
-          height: 39px !important;
-          border-radius: 12px !important;
-          font-size: 21px !important;
-        }
-        .ktvdi-brand-title {
-          font-size: 11px !important;
-          line-height: 1.35;
-        }
-        .ktvdi-brand-sub {
-          font-size: 10px !important;
-        }
-        .ktvdi-hero {
-          min-height: 190px;
-          padding: 25px 21px !important;
-          border-radius: 19px !important;
-        }
-        [data-testid="stMetric"] {
-          min-height: 90px;
-          padding: 12px !important;
-        }
-        [data-testid="stMetricValue"] {
-          font-size: 23px !important;
-        }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        *, *::before, *::after {
-          scroll-behavior: auto !important;
-          transition-duration: .01ms !important;
-          animation-duration: .01ms !important;
-        }
-      }
-    </style>
-    """, unsafe_allow_html=True)
+    # Jam WIB real-time menggunakan HTML dan JavaScript di sisi browser.
+    components.html('<div style="display:flex;align-items:center;justify-content:flex-end;gap:9px;min-height:28px;padding:0 4px;color:#64748b;font:600 11px Inter,system-ui,sans-serif;letter-spacing:.02em"><span style="width:7px;height:7px;border-radius:50%;background:#16a34a;box-shadow:0 0 0 4px rgba(22,163,74,.12)"></span><span>LAYANAN KOMUNITAS AKTIF</span><span style="opacity:.4">•</span><span id="ktvdi-clock">Waktu Indonesia Barat</span></div><script>(()=>{const node=document.getElementById(\'ktvdi-clock\');const tick=()=>{node.textContent=new Intl.DateTimeFormat(\'id-ID\',{weekday:\'long\',day:\'2-digit\',month:\'long\',year:\'numeric\',hour:\'2-digit\',minute:\'2-digit\',second:\'2-digit\',hour12:false,timeZone:\'Asia/Jakarta\'}).format(new Date())+\' WIB\'};tick();setInterval(tick,1000)})();</script>', height=32, scrolling=False)
 
     logged_in = bool(st.session_state.get("login"))
     if logged_in:

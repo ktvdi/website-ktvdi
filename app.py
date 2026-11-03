@@ -1063,16 +1063,23 @@ def display_broadcast_map():
                 f"{r.get('provinsi', '')} / {r.get('wilayah', '')} / {r.get('mux', '')}"
                 for r in located
             ]
+            # Opsi kosong menjadi nilai awal: tidak ada MUX yang dipilih otomatis.
+            # Key baru juga mencegah nilai pilihan lama tersimpan dari versi sebelumnya.
             selected_idx = st.selectbox(
-                "Pilih MUX / pemancar", range(len(located)),
-                format_func=lambda i: labels[i], key="map_mux_to_position"
+                "Pilih MUX / pemancar",
+                options=[None] + list(range(len(located))),
+                index=0,
+                format_func=lambda i: "Pilih MUX/pemancar (opsional)" if i is None else labels[i],
+                key="map_mux_to_position_v2",
             )
-            selected_row = located[selected_idx]
-            center_lat, center_lon = selected_row["latitude"], selected_row["longitude"]
-            # Zoom ke area pemancar yang dipilih. Key berubah saat pilihan MUX berubah
-            # agar komponen peta dimuat ulang dengan pusat dan zoom yang baru.
-            zoom = 12
-            map_component_key = f"digital_transmitter_map_{selected_idx}"
+            if selected_idx is not None:
+                selected_row = located[selected_idx]
+                center_lat, center_lon = selected_row["latitude"], selected_row["longitude"]
+                # Zoom hanya setelah pengguna memilih pemancar.
+                zoom = 12
+                map_component_key = f"digital_transmitter_map_{selected_idx}"
+            else:
+                st.caption("Pilih MUX/pemancar jika ingin melihat prediksi cakupan dan laporan pengukurannya. Seluruh titik pemancar tetap ditampilkan pada peta.")
         else:
             st.warning("Belum ada pemancar dengan koordinat valid.")
         if admin_can_manage:
@@ -1126,85 +1133,86 @@ def display_broadcast_map():
         elif selected_row is not None:
             st.caption("Login untuk mengusulkan atau memperbarui data teknis pemancar melalui halaman Data Teknis Pemancar.")
 
-        st.subheader("⛰️ Prediksi terrain pemancar terpilih")
-        cov1, cov2, cov3, cov4, cov5, cov6 = st.columns(6)
-        coverage_erp = cov1.number_input("ERP fallback (W)", 1.0, 1000000.0, 1000.0, 100.0, key="terrain_cov_erp")
-        tx_height = cov2.number_input("TX fallback (m)", 1.0, 1000.0, 30.0, 1.0, key="terrain_tx_height")
-        fallback_gain = cov3.number_input("Gain fallback (dBd)", -10.0, 30.0, 10.0, 0.5, key="terrain_fallback_gain")
-        fallback_feeder = cov4.number_input("Feeder fallback (dB)", 0.0, 30.0, 2.0, 0.5, key="terrain_fallback_feeder")
-        rx_height = cov5.number_input("RX (m)", 1.0, 100.0, 10.0, 1.0, key="terrain_rx_height")
-        rx_threshold = cov6.number_input("Ambang RX (dBm)", -120.0, -40.0, -90.0, 1.0, key="terrain_rx_threshold")
-        st.caption(
-            "Area analisis terrain berdiameter tetap 200 km (radius 100 km). "
-            "Power Output (W) dan Tinggi TX dari data pemancar dipakai jika tersedia. "
-            "Gain antena, rugi feeder, ERP, atau tinggi TX yang belum diketahui dapat memakai "
-            "nilai fallback dan akan diberi penanda asumsi pada hasil prediksi. "
-            "Warna menunjukkan estimasi area yang diperkirakan melampaui ambang RX, bukan "
-            "jaminan bahwa siaran pasti diterima. Resolusi DEM menyesuaikan beban komputasi."
-        )
-        if selected_row and st.checkbox("Tampilkan prediksi terrain sampai jangkauan maksimum", value=True, key="show_terrain_coverage"):
-            try:
-                with st.spinner("Mengambil DEM MAPZEN dan menghitung prediksi terrain pada area berdiameter 200 km..."):
-                    terrain_layers = _terrain_dem_coverage(
-                        [selected_row], center_lat, center_lon,
-                        erp_watt=coverage_erp, tx_height_m=tx_height,
-                        rx_height_m=rx_height, rx_threshold_dbm=rx_threshold,
-                        extra_loss_db=4.0, fallback_antenna_gain_dbd=fallback_gain,
-                        fallback_feeder_loss_db=fallback_feeder, max_transmitters=1
-                    )
-                for layer in terrain_layers:
-                    folium.raster_layers.ImageOverlay(
-                        image=layer["image"], bounds=layer["bounds"],
-                        opacity=0.90, name=f"Prediksi terrain: {layer['name']}",
-                        interactive=True, cross_origin=False, zindex=2
-                    ).add_to(fmap)
-                terrain_legend = """
-                <div style="position:fixed;bottom:24px;left:12px;z-index:9999;"
-                     background:rgba(255,255,255,.94);padding:9px 11px;border-radius:8px;
-                     box-shadow:0 1px 6px rgba(0,0,0,.28);font-size:11px;line-height:1.6;
-                     color:#222;">
-                  <div style="font-weight:700;margin-bottom:3px;">Prediksi kekuatan sinyal</div>
-                  <div><span style="display:inline-block;width:11px;height:11px;background:#eb2323;margin-right:6px;"></span>Merah — Lemah</div>
-                  <div><span style="display:inline-block;width:11px;height:11px;background:#ffdc00;margin-right:6px;"></span>Kuning — Sedang</div>
-                  <div><span style="display:inline-block;width:11px;height:11px;background:#14b441;margin-right:6px;"></span>Hijau — Kuat</div>
-                  <div><span style="display:inline-block;width:11px;height:11px;background:#1969eb;margin-right:6px;"></span>Biru — Sangat kuat</div>
-                  <div style="font-size:9px;color:#555;margin-top:3px;">Kelas berdasarkan margin terhadap ambang RX</div>
-                </div>
-                """
-                fmap.get_root().html.add_child(folium.Element(terrain_legend))
-                layer = terrain_layers[0]
-                st.caption(
-                    f"Diameter area terrain: {layer['terrain_diameter_km']:.0f} km (radius {layer['terrain_radius_km']:.0f} km); "
-                    f"jangkauan link-budget indikatif: {layer['max_range_km']:.1f} km; "
-                    f"batas link budget ruang bebas: {layer['fs_range_km']:.1f} km; "
-                    f"horizon radio: {layer['radio_horizon_km']:.1f} km; "
-                    f"resolusi raster: sekitar {layer['raster_resolution_m']:.0f} m/piksel. "
-                    f"ERP yang dipakai: {layer['erp_used_w']:.1f} W ({layer['erp_source']}); "
-                    f"tinggi TX: {layer['tx_height_used_m']:.1f} m ({layer['tx_height_source']}). "
-                    + (f"Power Output tersimpan: {layer['tx_power_w']:.1f} W. " if layer.get("tx_power_w") is not None else "")
-                    + "Area berwarna menunjukkan piksel yang diperkirakan melampaui ambang RX."
-                )
-                st.info(
-                    "Status data prediksi: " + layer.get(
-                        "prediction_data_status", "Estimasi; parameter teknis perlu diverifikasi."
-                    ) + "."
-                )
-                if layer.get("assumption_notes"):
-                    st.warning(
-                        "Prediksi ini adalah estimasi dengan asumsi teknis: "
-                        + "; ".join(layer["assumption_notes"])
-                        + ". Hasil bukan jaminan penerimaan siaran."
-                    )
-                else:
+        if selected_row is not None:
+            st.subheader("⛰️ Prediksi terrain pemancar terpilih")
+            cov1, cov2, cov3, cov4, cov5, cov6 = st.columns(6)
+            coverage_erp = cov1.number_input("ERP fallback (W)", 1.0, 1000000.0, 1000.0, 100.0, key="terrain_cov_erp")
+            tx_height = cov2.number_input("TX fallback (m)", 1.0, 1000.0, 30.0, 1.0, key="terrain_tx_height")
+            fallback_gain = cov3.number_input("Gain fallback (dBd)", -10.0, 30.0, 10.0, 0.5, key="terrain_fallback_gain")
+            fallback_feeder = cov4.number_input("Feeder fallback (dB)", 0.0, 30.0, 2.0, 0.5, key="terrain_fallback_feeder")
+            rx_height = cov5.number_input("RX (m)", 1.0, 100.0, 10.0, 1.0, key="terrain_rx_height")
+            rx_threshold = cov6.number_input("Ambang RX (dBm)", -120.0, -40.0, -90.0, 1.0, key="terrain_rx_threshold")
+            st.caption(
+                "Area analisis terrain berdiameter tetap 200 km (radius 100 km). "
+                "Power Output (W) dan Tinggi TX dari data pemancar dipakai jika tersedia. "
+                "Gain antena, rugi feeder, ERP, atau tinggi TX yang belum diketahui dapat memakai "
+                "nilai fallback dan akan diberi penanda asumsi pada hasil prediksi. "
+                "Warna menunjukkan estimasi area yang diperkirakan melampaui ambang RX, bukan "
+                "jaminan bahwa siaran pasti diterima. Resolusi DEM menyesuaikan beban komputasi."
+            )
+            if selected_row and st.checkbox("Tampilkan prediksi terrain sampai jangkauan maksimum", value=True, key="show_terrain_coverage"):
+                try:
+                    with st.spinner("Mengambil DEM MAPZEN dan menghitung prediksi terrain pada area berdiameter 200 km..."):
+                        terrain_layers = _terrain_dem_coverage(
+                            [selected_row], center_lat, center_lon,
+                            erp_watt=coverage_erp, tx_height_m=tx_height,
+                            rx_height_m=rx_height, rx_threshold_dbm=rx_threshold,
+                            extra_loss_db=4.0, fallback_antenna_gain_dbd=fallback_gain,
+                            fallback_feeder_loss_db=fallback_feeder, max_transmitters=1
+                        )
+                    for layer in terrain_layers:
+                        folium.raster_layers.ImageOverlay(
+                            image=layer["image"], bounds=layer["bounds"],
+                            opacity=0.90, name=f"Prediksi terrain: {layer['name']}",
+                            interactive=True, cross_origin=False, zindex=2
+                        ).add_to(fmap)
+                    terrain_legend = """
+                    <div style="position:fixed;bottom:24px;left:12px;z-index:9999;"
+                         background:rgba(255,255,255,.94);padding:9px 11px;border-radius:8px;
+                         box-shadow:0 1px 6px rgba(0,0,0,.28);font-size:11px;line-height:1.6;
+                         color:#222;">
+                      <div style="font-weight:700;margin-bottom:3px;">Prediksi kekuatan sinyal</div>
+                      <div><span style="display:inline-block;width:11px;height:11px;background:#eb2323;margin-right:6px;"></span>Merah — Lemah</div>
+                      <div><span style="display:inline-block;width:11px;height:11px;background:#ffdc00;margin-right:6px;"></span>Kuning — Sedang</div>
+                      <div><span style="display:inline-block;width:11px;height:11px;background:#14b441;margin-right:6px;"></span>Hijau — Kuat</div>
+                      <div><span style="display:inline-block;width:11px;height:11px;background:#1969eb;margin-right:6px;"></span>Biru — Sangat kuat</div>
+                      <div style="font-size:9px;color:#555;margin-top:3px;">Kelas berdasarkan margin terhadap ambang RX</div>
+                    </div>
+                    """
+                    fmap.get_root().html.add_child(folium.Element(terrain_legend))
+                    layer = terrain_layers[0]
                     st.caption(
-                        "ERP dan tinggi TX menggunakan data yang tersedia. "
-                        "Hasil tetap merupakan estimasi karena model terrain belum menggantikan "
-                        "pengukuran lapangan atau model propagasi tersertifikasi."
+                        f"Diameter area terrain: {layer['terrain_diameter_km']:.0f} km (radius {layer['terrain_radius_km']:.0f} km); "
+                        f"jangkauan link-budget indikatif: {layer['max_range_km']:.1f} km; "
+                        f"batas link budget ruang bebas: {layer['fs_range_km']:.1f} km; "
+                        f"horizon radio: {layer['radio_horizon_km']:.1f} km; "
+                        f"resolusi raster: sekitar {layer['raster_resolution_m']:.0f} m/piksel. "
+                        f"ERP yang dipakai: {layer['erp_used_w']:.1f} W ({layer['erp_source']}); "
+                        f"tinggi TX: {layer['tx_height_used_m']:.1f} m ({layer['tx_height_source']}). "
+                        + (f"Power Output tersimpan: {layer['tx_power_w']:.1f} W. " if layer.get("tx_power_w") is not None else "")
+                        + "Area berwarna menunjukkan piksel yang diperkirakan melampaui ambang RX."
                     )
-                if layer.get("technical_reference"):
-                    st.caption(f"Referensi data teknis: {layer['technical_reference']}")
-            except Exception as terrain_error:
-                st.warning(f"Coverage topografi belum dapat dihitung: {terrain_error}. Periksa dependensi GIS dan akses sumber DEM.")
+                    st.info(
+                        "Status data prediksi: " + layer.get(
+                            "prediction_data_status", "Estimasi; parameter teknis perlu diverifikasi."
+                        ) + "."
+                    )
+                    if layer.get("assumption_notes"):
+                        st.warning(
+                            "Prediksi ini adalah estimasi dengan asumsi teknis: "
+                            + "; ".join(layer["assumption_notes"])
+                            + ". Hasil bukan jaminan penerimaan siaran."
+                        )
+                    else:
+                        st.caption(
+                            "ERP dan tinggi TX menggunakan data yang tersedia. "
+                            "Hasil tetap merupakan estimasi karena model terrain belum menggantikan "
+                            "pengukuran lapangan atau model propagasi tersertifikasi."
+                        )
+                    if layer.get("technical_reference"):
+                        st.caption(f"Referensi data teknis: {layer['technical_reference']}")
+                except Exception as terrain_error:
+                    st.warning(f"Coverage topografi belum dapat dihitung: {terrain_error}. Periksa dependensi GIS dan akses sumber DEM.")
         folium.LayerControl(collapsed=False, position="topright").add_to(fmap)
         # Perkecil teks kontrol layer dan popup agar label prediksi terrain
         # tidak mendominasi area peta, terutama pada layar ponsel.
@@ -1320,8 +1328,7 @@ def display_broadcast_map():
         st.caption(
             f"{len(located)} titik pemancar dari database • {1 if selected_row else 0} pemancar dipilih • "
             f"{len(selected_measurements)} laporan pengukuran untuk MUX terpilih. "
-            "Semua titik pemancar berwarna merah; overlay berwarna = prediksi terrain hanya untuk pemancar terpilih; "
-            "lingkaran = laporan pengukuran aktual untuk MUX terpilih."
+            "Semua titik pemancar berwarna merah; overlay berwarna dan lingkaran laporan hanya muncul setelah MUX dipilih."
         )
 
         # Pengelolaan dan penambahan koordinat dipisahkan ke halaman "Tambah Titik Pemancar".
@@ -1333,7 +1340,7 @@ def display_broadcast_map():
                          f"{layer['min_dbm']:.1f} hingga {layer['max_dbm']:.1f} dBm.")
             st.caption("Perhitungan memakai spreading ruang bebas dan aproksimasi difraksi knife-edge dari DEM. Jarak maksimum dihitung dari link budget serta horizon radio efektif. ERP, frekuensi, tinggi antena, ambang RX, pola antena, clutter, interferensi, dan rugi sistem harus diverifikasi dengan data lapangan; hasil ini bukan prediksi sertifikasi atau jaminan penerimaan.")
         else:
-            st.info("Pilih mode Pemancar terpilih, pilih MUX dengan koordinat dan kanal UHF (mis. 'UHF 27'), lalu aktifkan prediksi terrain.")
+            st.info("Belum ada MUX yang dipilih. Pilih MUX/pemancar pada daftar di atas untuk mengaktifkan prediksi terrain dan melihat ringkasan propagasi.")
 
         # Pengukuran aktual dari layar informasi sinyal pada perangkat TV/STB.
         st.subheader("📝 Kirim pengukuran aktual dari TV/STB")

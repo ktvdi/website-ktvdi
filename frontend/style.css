@@ -96,3 +96,13 @@
 @media(max-width:720px){
   .nav button.login-nav{margin-left:0;text-align:center}
 }
+
+/* Waktu perubahan terakhir titik pemancar, tepat di bawah peta dan rata kiri */
+.map-last-updated{
+  padding:0 2px 8px;
+  margin-top:-5px;
+  color:#466078;
+  font-size:12px;
+  line-height:1.4;
+  text-align:left;
+}

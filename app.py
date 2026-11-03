@@ -1002,7 +1002,7 @@ def display_broadcast_map():
     st.markdown(
         "Peta ini menggabungkan **lokasi pemancar**, **estimasi propagasi sederhana**, "
         "dan **hasil pengukuran aktual yang dilaporkan pengguna dari menu TV/STB**. "
-        "Setiap entri wilayah memiliki ID pemancar dan ID MUX deterministik agar "
+        "Data pengukuran dihubungkan ke pemancar dan MUX yang tepat agar "
         "pengukuran bernama MUX sama tidak tercampur antarwilayah."
     )
     st.warning(
@@ -1038,8 +1038,7 @@ def display_broadcast_map():
         terrain_layers = []
         if located:
             labels = [
-                f"{r.get('provinsi', '')} / {r.get('wilayah', '')} / {r.get('mux', '')} "
-                f"[{r.get('mux_id', '')}]"
+                f"{r.get('provinsi', '')} / {r.get('wilayah', '')} / {r.get('mux', '')}"
                 for r in located
             ]
             selected_idx = st.selectbox(
@@ -1242,8 +1241,6 @@ def display_broadcast_map():
                 color = "blue"
             popup = (
                 f"<b>Pengukuran pengguna</b><br>MUX: {html.escape(str(m.get('mux', '')))}"
-                f"<br>ID Pemancar: {html.escape(str(m.get('transmitter_id', '-')))}"
-                f"<br>ID MUX: {html.escape(str(m.get('mux_id', '-')))}"
                 f"<br>Wilayah: {html.escape(str(m.get('wilayah', '')))}"
                 f"<br>Strength: {html.escape(str(m.get('strength', '-')))}%"
                 f"<br>Quality: {html.escape(str(m.get('quality', '-')))}%"
@@ -1305,10 +1302,6 @@ def display_broadcast_map():
             )
             with st.form("signal_measurement_form", clear_on_submit=True):
                 st.caption(f"MUX terpilih: **{selected_row['mux']}** — {selected_row['wilayah']}, {selected_row['provinsi']}")
-                st.caption(
-                    f"ID pemancar: `{selected_row['transmitter_id']}` • "
-                    f"ID MUX: `{selected_row['mux_id']}`"
-                )
                 st.caption(f"Koordinat laporan mengikuti posisi tengah peta: {target_lat:.6f}, {target_lon:.6f}. Geser peta atau gunakan GPS terlebih dahulu.")
                 strength = st.number_input("Signal Strength (%)", min_value=0, max_value=100, value=0, step=1)
                 quality = st.number_input("Signal Quality (%)", min_value=0, max_value=100, value=0, step=1)
@@ -1372,8 +1365,6 @@ def display_broadcast_map():
             if filtered:
                 table_rows = [{
                     "Waktu": m.get("timestamp", "-"),
-                    "ID Pemancar": m.get("transmitter_id", "-"),
-                    "ID MUX": m.get("mux_id", "-"),
                     "MUX": m.get("mux", "-"),
                     "Wilayah": m.get("wilayah", "-"),
                     "Strength (%)": m.get("strength", "-"),

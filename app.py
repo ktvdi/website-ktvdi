@@ -1071,9 +1071,6 @@ def display_broadcast_map():
         if selected_row is not None:
             center_lat, center_lon = selected_row["latitude"], selected_row["longitude"]
             zoom = 12
-            if st.button("✖ Hapus pilihan pemancar", key="clear_map_selected_transmitter"):
-                st.session_state.pop("map_selected_broadcast_identity", None)
-                st.rerun()
             st.caption(
                 f"Pemancar terpilih: {selected_row.get('wilayah', '')} / "
                 f"{selected_row.get('mux', '')}. Klik titik lain untuk mengganti pilihan."
@@ -1315,6 +1312,17 @@ def display_broadcast_map():
         # atau memakai kontrol GPS. Jika data pusat belum dikirim komponen,
         # gunakan koordinat pemancar terpilih sebagai fallback yang aman.
         target_lat, target_lon = center_lat, center_lon
+
+        # Tombol hapus pilihan ditempatkan tepat di atas peta, rata kanan.
+        if selected_row is not None:
+            _, clear_button_col = st.columns([0.90, 0.10])
+            if clear_button_col.button(
+                "×", key="clear_map_selected_transmitter",
+                help="Hapus pilihan pemancar"
+            ):
+                st.session_state.pop("map_selected_broadcast_identity", None)
+                st.rerun()
+
         map_state = st_folium(
             fmap, width=None, height=560, use_container_width=True,
             key=map_component_key

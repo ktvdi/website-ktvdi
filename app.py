@@ -2,7 +2,7 @@
 from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
-from backend import initialize_firebase, handle_event, get_stats, get_all_broadcast_rows, get_recent_changes
+from backend import initialize_firebase, handle_event, get_stats, get_all_broadcast_rows, get_recent_changes, get_latest_transmitter_update_timestamp
 
 st.set_page_config(page_title="KTVDI", page_icon="📡", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
@@ -35,6 +35,7 @@ try:
     event=_component()(result=st.session_state.ktvdi_result,
         auth=st.session_state.ktvdi_session.get("auth"), stats=get_stats(), rows=rows,
         changes=get_recent_changes(), provinces=provinces,
+        map_last_updated=get_latest_transmitter_update_timestamp(),
         key="ktvdi_web_frontend", default=None)
     if isinstance(event,dict) and event.get("event_id")!=st.session_state.ktvdi_event_id:
         st.session_state.ktvdi_event_id=event.get("event_id")

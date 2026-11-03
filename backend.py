@@ -49,6 +49,30 @@ def get_all_broadcast_rows() -> list[dict[str, Any]]:
     return rows
 
 
+
+def get_latest_transmitter_update_timestamp() -> str | None:
+    """Waktu perubahan terakhir pada titik pemancar atau informasi pemancarnya."""
+    logs = db.reference("audit_logs").get() or {}
+    relevant = {
+        "add_broadcast", "edit_broadcast", "delete_broadcast", "restore_broadcast",
+        "add_coordinates", "update_coordinates", "delete_coordinates",
+        "update_transmitter_technical_data",
+    }
+    timestamps = [
+        str(item.get("timestamp", "")).strip()
+        for item in logs.values()
+        if isinstance(item, dict)
+        and item.get("action") in relevant
+        and item.get("timestamp")
+    ]
+    if not timestamps:
+        return None
+    latest = max(timestamps)
+    try:
+        return datetime.strptime(latest[:19], "%Y-%m-%d %H:%M:%S").strftime("%d-%m-%Y %H:%M")
+    except ValueError:
+        return latest[:16]
+
 def get_stats() -> dict[str, int]:
     rows = get_all_broadcast_rows()
     return {"provinsi": len({r['provinsi'] for r in rows}),

@@ -52,3 +52,26 @@
 .transmitter-popup b{font-size:11.5px}
 .transmitter-popup ul{max-height:90px}
 @media(max-width:720px){.simulation-grid{grid-template-columns:1fr 1fr}.simulation-grid .action{grid-column:1/-1}}
+
+
+/* Popup informasi pemancar: lebar 90% peta, tinggi mengikuti seluruh isi */
+#map{container-type:inline-size}
+#map .leaflet-popup{max-width:none!important}
+#map .leaflet-popup-content-wrapper{width:100%;box-sizing:border-box}
+#map .leaflet-popup-content{
+  width:calc(90cqw - 22px)!important;
+  max-width:none!important;
+  box-sizing:border-box;
+}
+#map .transmitter-popup{
+  width:100%;
+  min-width:0;
+  max-width:none;
+  font-size:11.5px;
+  line-height:1.3;
+  overflow-wrap:anywhere;
+}
+#map .transmitter-popup ul{
+  max-height:none;
+  overflow:visible;
+}

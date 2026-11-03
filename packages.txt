@@ -1,2 +1,5 @@
 gdal-bin
-libgdal-dev
+make
+curl
+unzip
+gzip

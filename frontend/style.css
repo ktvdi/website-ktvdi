@@ -15,3 +15,15 @@
 [data-more]{margin:8px 0}
 .panel{scroll-margin-top:16px}
 @media(max-width:720px){.panel{padding:16px}.long-section{padding:10px}}
+
+/* Kontrol peta dan popup informasi pemancar */
+.map-container{position:relative}
+.map-gps-button{position:absolute;z-index:500;top:12px;left:12px;width:42px;height:42px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;font-size:27px;line-height:1;box-shadow:0 1px 5px #0003;cursor:pointer}
+.map-gps-button:hover{background:#f1f5f9}
+.map-gps-button:disabled{opacity:.65;cursor:wait}
+.transmitter-popup{min-width:190px;line-height:1.45;color:#172033}
+.transmitter-popup .popup-kicker{font-size:10px;letter-spacing:.08em;color:#64748b;margin-bottom:5px}
+.transmitter-popup b{display:block;margin-top:5px}
+.transmitter-popup ul{margin:3px 0 0;padding-left:18px;max-height:130px;overflow:auto}
+.popup-terrain{margin-top:8px;padding-top:7px;border-top:1px solid #cbd5e1;font-weight:600;color:#166534}
+@media(max-width:720px){.map-gps-button{width:40px;height:40px;top:10px;left:10px}}

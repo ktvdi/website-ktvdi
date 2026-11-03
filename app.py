@@ -5,6 +5,7 @@ import smtplib
 import random
 import time
 import re
+import math
 import pandas as pd
 import google.generativeai as genai
 from email.mime.text import MIMEText
@@ -344,9 +345,78 @@ def _estimate_max_range_km(freq_mhz, erp_watt, tx_height_m, rx_height_m,
     return max(1.0, min(fs_range_km, radio_horizon_km)), fs_range_km, radio_horizon_km
 
 
+def _resolve_transmitter_technical_data(tx, fallback_erp_watt=1000.0,
+                                        fallback_tx_height_m=30.0,
+                                        fallback_antenna_gain_dbd=10.0,
+                                        fallback_feeder_loss_db=2.0):
+    """Pilih data teknis per pemancar; nilai asumsi hanya untuk field yang kosong.
+
+    ERP aktual diprioritaskan. Jika hanya power output tersedia, ERP dihitung
+    dari power output + gain antena - rugi feeder. Gain/rugi yang belum tercatat
+    memakai nilai fallback dan ditandai sebagai asumsi.
+    """
+    detail = tx.get("detail") or {}
+
+    def positive_number(value):
+        try:
+            number = float(value)
+            return number if number > 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    def finite_number(value):
+        try:
+            number = float(value)
+            return number if math.isfinite(number) else None
+        except (TypeError, ValueError):
+            return None
+
+    actual_tx_height = positive_number(detail.get("tx_height_m"))
+    actual_tx_power = positive_number(detail.get("tx_power_w"))
+    actual_erp = positive_number(detail.get("erp_w"))
+    actual_gain = finite_number(detail.get("antenna_gain_dbd"))
+    actual_feeder_loss = finite_number(detail.get("feeder_loss_db"))
+
+    used_tx_height = actual_tx_height if actual_tx_height is not None else float(fallback_tx_height_m)
+    tx_height_source = "data pemancar" if actual_tx_height is not None else "asumsi"
+
+    if actual_erp is not None:
+        used_erp = actual_erp
+        erp_source = "ERP aktual tersimpan"
+        used_gain = actual_gain
+        used_feeder_loss = actual_feeder_loss
+    elif actual_tx_power is not None:
+        used_gain = actual_gain if actual_gain is not None else float(fallback_antenna_gain_dbd)
+        used_feeder_loss = (actual_feeder_loss if actual_feeder_loss is not None
+                            else float(fallback_feeder_loss_db))
+        used_erp = actual_tx_power * (10.0 ** ((used_gain - used_feeder_loss) / 10.0))
+        if actual_gain is not None and actual_feeder_loss is not None:
+            erp_source = "dihitung dari power output dan data antena aktual"
+        else:
+            erp_source = "dihitung dari power output; gain/rugi feeder sebagian asumsi"
+    else:
+        used_erp = float(fallback_erp_watt)
+        used_gain = actual_gain
+        used_feeder_loss = actual_feeder_loss
+        erp_source = "ERP asumsi"
+
+    return {
+        "erp_watt": used_erp,
+        "tx_height_m": used_tx_height,
+        "tx_power_w": actual_tx_power,
+        "antenna_gain_dbd": used_gain,
+        "feeder_loss_db": used_feeder_loss,
+        "erp_source": erp_source,
+        "tx_height_source": tx_height_source,
+        "technical_reference": detail.get("technical_data_reference", ""),
+        "technical_updated_at": detail.get("technical_data_updated_at", ""),
+    }
+
+
 def _terrain_dem_coverage(located, center_lat, center_lon,
                           erp_watt=1000.0, tx_height_m=30.0, rx_height_m=10.0,
                           rx_threshold_dbm=-90.0, extra_loss_db=4.0,
+                          fallback_antenna_gain_dbd=10.0, fallback_feeder_loss_db=2.0,
                           max_transmitters=1):
     """Prediksi terrain sampai jarak maksimum hasil asumsi link budget.
 
@@ -373,8 +443,15 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
     outputs = []
     for tx in tx_list:
         freq = _uhf_frequency_mhz(tx.get("mux", ""))
+        technical = _resolve_transmitter_technical_data(
+            tx, fallback_erp_watt=erp_watt, fallback_tx_height_m=tx_height_m,
+            fallback_antenna_gain_dbd=fallback_antenna_gain_dbd,
+            fallback_feeder_loss_db=fallback_feeder_loss_db
+        )
+        erp_used = technical["erp_watt"]
+        tx_height_used = technical["tx_height_m"]
         max_range_km, fs_range_km, horizon_km = _estimate_max_range_km(
-            freq, erp_watt, tx_height_m, rx_height_m, rx_threshold_dbm, extra_loss_db
+            freq, erp_used, tx_height_used, rx_height_m, rx_threshold_dbm, extra_loss_db
         )
         tx_lat, tx_lon = float(tx["latitude"]), float(tx["longitude"])
         utm_zone = int((tx_lon + 180) // 6) + 1
@@ -441,7 +518,7 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
                                           order=1, mode="nearest")[0])
         dx, dy = xx - tx_x, yy - tx_y
         distance = np.maximum(np.sqrt(dx*dx + dy*dy), 50.0)
-        tx_abs = tx_ground + float(tx_height_m)
+        tx_abs = tx_ground + float(tx_height_used)
         rx_abs = dem_grid + float(rx_height_m)
         max_v = np.full(dem_grid.shape, -10.0, dtype="float32")
         wavelength = 299.792458 / float(freq)
@@ -464,7 +541,7 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
             np.sqrt((v_formula-0.1)**2 + 1.0) + v_formula - 0.1
         )
         diffraction = np.where(max_v <= -0.78, 0.0, knife_edge_loss)
-        eirp_dbm = 10.0*np.log10(max(float(erp_watt), 0.001)*1000.0) + 2.15
+        eirp_dbm = 10.0*np.log10(max(float(erp_used), 0.001)*1000.0) + 2.15
         path_loss = 32.44 + 20.0*np.log10(float(freq)) + 20.0*np.log10(distance/1000.0)
         rx_dbm = eirp_dbm - path_loss - diffraction - float(extra_loss_db)
         rx_dbm = np.where(mask, rx_dbm, np.nan)
@@ -499,7 +576,13 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
             "terrain_radius_km": terrain_radius_km,
             "terrain_diameter_km": 2.0 * terrain_radius_km,
             "fs_range_km": fs_range_km, "radio_horizon_km": horizon_km,
-            "raster_resolution_m": cell, "rx_threshold_dbm": float(rx_threshold_dbm)
+            "raster_resolution_m": cell, "rx_threshold_dbm": float(rx_threshold_dbm),
+            "erp_used_w": float(erp_used), "tx_height_used_m": float(tx_height_used),
+            "tx_power_w": technical.get("tx_power_w"),
+            "erp_source": technical.get("erp_source"),
+            "tx_height_source": technical.get("tx_height_source"),
+            "technical_reference": technical.get("technical_reference", ""),
+            "technical_updated_at": technical.get("technical_updated_at", "")
         })
     return outputs
 
@@ -584,9 +667,9 @@ def display_broadcast_map():
         if admin_can_manage:
             st.info("Admin dapat mengelola koordinat pemancar. Semua pengguna yang login dapat mengirim hasil pengukuran sinyal.")
         elif logged_in:
-            st.info("Pilih pemancar untuk melihat prediksi terrain dan melaporkan pengukuran pada MUX tersebut. Gunakan kontrol GPS untuk menuju lokasi Anda.")
+            st.info("Pilih pemancar untuk melihat prediksi terrain, menambahkan data teknis, dan melaporkan pengukuran. Gunakan kontrol GPS untuk menuju lokasi Anda.")
         else:
-            st.caption("Pilih satu pemancar untuk melihat prediksi terrain. Login diperlukan untuk mengirim laporan pengukuran.")
+            st.caption("Pilih satu pemancar untuk melihat prediksi terrain. Login diperlukan untuk menambahkan data teknis dan mengirim laporan pengukuran.")
 
         fmap = folium.Map(location=[center_lat, center_lon], zoom_start=zoom, control_scale=True, tiles=None)
         folium.TileLayer("OpenStreetMap", name="Peta Jalan", overlay=False, control=True, show=True).add_to(fmap)
@@ -595,12 +678,83 @@ def display_broadcast_map():
             attr="Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
             name="Satelit", overlay=False, control=True, show=False
         ).add_to(fmap)
+        # Semua pengguna yang sudah login dapat menambahkan/memperbarui data teknis
+        # bersama per pemancar. Koordinat dan pengaturan administratif tetap dibatasi admin.
+        if selected_row is not None and logged_in:
+            current_detail = selected_row.get("detail") or {}
+            with st.expander("📡 Tambahkan / perbarui data teknis pemancar", expanded=False):
+                st.caption("Semua pengguna yang login dapat berkontribusi. Isi parameter yang diketahui dan sertakan sumber/referensi agar dapat diperiksa komunitas. Field kosong tidak menghapus data yang sudah tersimpan; parameter yang belum tersedia tetap memakai asumsi.")
+                technical_form_identity = "|".join([
+                    str(selected_row.get("provinsi", "")),
+                    str(selected_row.get("wilayah", "")),
+                    str(selected_row.get("mux", ""))
+                ])
+                technical_form_key = "transmitter_technical_data_" + hashlib.sha1(technical_form_identity.encode("utf-8")).hexdigest()[:12]
+                with st.form(technical_form_key, clear_on_submit=False):
+                    tech_c1, tech_c2 = st.columns(2)
+                    tx_height_input = tech_c1.text_input("Tinggi antena TX aktual (m)", value=str(current_detail.get("tx_height_m", "")))
+                    tx_power_input = tech_c2.text_input("Power Output aktual (W)", value=str(current_detail.get("tx_power_w", "")))
+                    tech_c3, tech_c4 = st.columns(2)
+                    erp_input = tech_c3.text_input("ERP aktual (W), jika diketahui", value=str(current_detail.get("erp_w", "")))
+                    gain_input = tech_c4.text_input("Gain antena aktual (dBd)", value=str(current_detail.get("antenna_gain_dbd", "")))
+                    feeder_input = st.text_input("Rugi feeder aktual (dB)", value=str(current_detail.get("feeder_loss_db", "")))
+                    reference_input = st.text_input("Sumber / referensi data", value=str(current_detail.get("technical_data_reference", "")), placeholder="Contoh: dokumen izin, data operator, hasil pengukuran")
+                    save_technical = st.form_submit_button("💾 Simpan data teknis pemancar")
+                if save_technical:
+                    raw_fields = {
+                        "tx_height_m": tx_height_input, "tx_power_w": tx_power_input,
+                        "erp_w": erp_input, "antenna_gain_dbd": gain_input,
+                        "feeder_loss_db": feeder_input
+                    }
+                    parsed = {}
+                    errors = []
+                    for field, raw in raw_fields.items():
+                        value = raw.strip()
+                        if not value:
+                            continue
+                        try:
+                            number = float(value.replace(",", "."))
+                            if not math.isfinite(number):
+                                raise ValueError
+                            if field in {"tx_height_m", "tx_power_w", "erp_w"} and number <= 0:
+                                errors.append(f"{field}: harus lebih besar dari 0")
+                            elif field == "feeder_loss_db" and number < 0:
+                                errors.append("Rugi feeder tidak boleh negatif")
+                            elif field == "antenna_gain_dbd" and not -10 <= number <= 30:
+                                errors.append("Gain antena harus antara -10 hingga 30 dBd")
+                            else:
+                                parsed[field] = number
+                        except (TypeError, ValueError):
+                            errors.append(f"{field}: masukkan angka yang valid")
+                    if errors:
+                        for error in errors:
+                            st.error(error)
+                    else:
+                        r = selected_row
+                        technical_ref = db.reference(f"siaran/{r['provinsi']}/{r['wilayah']}/{r['mux']}")
+                        before_technical = technical_ref.get() or {}
+                        if isinstance(before_technical, list):
+                            before_technical = {"siaran": before_technical}
+                        updated_technical = dict(before_technical)
+                        # Pertahankan nilai yang sudah ada untuk field yang tidak diisi;
+                        # kontribusi pengguna hanya memperbarui parameter yang diberikan.
+                        updated_technical.update(parsed)
+                        updated_technical["technical_data_reference"] = reference_input.strip()
+                        updated_technical["technical_data_updated_at"] = datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S WIB")
+                        updated_technical["technical_data_updated_by"] = st.session_state.get("username", "pengguna")
+                        technical_ref.set(updated_technical)
+                        write_audit_log("update_transmitter_technical_data", r["provinsi"], r["wilayah"], r["mux"], before=before_technical, after=updated_technical)
+                        st.success("Data teknis pemancar berhasil disimpan ke Firebase.")
+                        st.rerun()
+
         st.subheader("⛰️ Prediksi terrain pemancar terpilih")
-        cov1, cov2, cov3, cov4 = st.columns(4)
-        coverage_erp = cov1.number_input("ERP asumsi per pemancar (W)", 1.0, 1000000.0, 1000.0, 100.0, key="terrain_cov_erp")
-        tx_height = cov2.number_input("Tinggi antena TX di atas tanah (m)", 1.0, 1000.0, 30.0, 1.0, key="terrain_tx_height")
-        rx_height = cov3.number_input("Tinggi antena RX di atas tanah (m)", 1.0, 100.0, 10.0, 1.0, key="terrain_rx_height")
-        rx_threshold = cov4.number_input("Ambang penerimaan RX (dBm)", -120.0, -40.0, -90.0, 1.0, key="terrain_rx_threshold")
+        cov1, cov2, cov3, cov4, cov5, cov6 = st.columns(6)
+        coverage_erp = cov1.number_input("ERP fallback (W)", 1.0, 1000000.0, 1000.0, 100.0, key="terrain_cov_erp")
+        tx_height = cov2.number_input("TX fallback (m)", 1.0, 1000.0, 30.0, 1.0, key="terrain_tx_height")
+        fallback_gain = cov3.number_input("Gain fallback (dBd)", -10.0, 30.0, 10.0, 0.5, key="terrain_fallback_gain")
+        fallback_feeder = cov4.number_input("Feeder fallback (dB)", 0.0, 30.0, 2.0, 0.5, key="terrain_fallback_feeder")
+        rx_height = cov5.number_input("RX (m)", 1.0, 100.0, 10.0, 1.0, key="terrain_rx_height")
+        rx_threshold = cov6.number_input("Ambang RX (dBm)", -120.0, -40.0, -90.0, 1.0, key="terrain_rx_threshold")
         st.caption("Area analisis terrain berdiameter tetap 200 km (radius 100 km) untuk pemancar mana pun yang dipilih. Warna hanya muncul pada area yang diperkirakan melampaui ambang RX berdasarkan ERP, frekuensi UHF, tinggi TX/RX, rugi sistem, horizon radio, dan penghalang terrain. Resolusi DEM menyesuaikan agar beban Streamlit Community Cloud terkendali.")
         if selected_row and st.checkbox("Tampilkan prediksi terrain sampai jangkauan maksimum", value=True, key="show_terrain_coverage"):
             try:
@@ -609,7 +763,8 @@ def display_broadcast_map():
                         [selected_row], center_lat, center_lon,
                         erp_watt=coverage_erp, tx_height_m=tx_height,
                         rx_height_m=rx_height, rx_threshold_dbm=rx_threshold,
-                        extra_loss_db=4.0, max_transmitters=1
+                        extra_loss_db=4.0, fallback_antenna_gain_dbd=fallback_gain,
+                        fallback_feeder_loss_db=fallback_feeder, max_transmitters=1
                     )
                 for layer in terrain_layers:
                     folium.raster_layers.ImageOverlay(
@@ -638,8 +793,13 @@ def display_broadcast_map():
                     f"batas link budget ruang bebas: {layer['fs_range_km']:.1f} km; "
                     f"horizon radio: {layer['radio_horizon_km']:.1f} km; "
                     f"resolusi raster: sekitar {layer['raster_resolution_m']:.0f} m/piksel. "
-                    "Area berwarna menunjukkan piksel yang diperkirakan melampaui ambang RX."
+                    f"ERP yang dipakai: {layer['erp_used_w']:.1f} W ({layer['erp_source']}); "
+                    f"tinggi TX: {layer['tx_height_used_m']:.1f} m ({layer['tx_height_source']}). "
+                    + (f"Power Output tersimpan: {layer['tx_power_w']:.1f} W. " if layer.get("tx_power_w") is not None else "")
+                    + "Area berwarna menunjukkan piksel yang diperkirakan melampaui ambang RX."
                 )
+                if layer.get("technical_reference"):
+                    st.caption(f"Referensi data teknis: {layer['technical_reference']}")
             except Exception as terrain_error:
                 st.warning(f"Coverage topografi belum dapat dihitung: {terrain_error}. Periksa dependensi GIS dan akses sumber DEM.")
         folium.LayerControl(collapsed=False, position="topright").add_to(fmap)

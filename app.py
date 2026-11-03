@@ -1051,35 +1051,38 @@ def display_broadcast_map():
         from streamlit_folium import st_folium
         import html
 
-        # Tampilan hanya untuk satu pemancar yang dipilih; tidak ada mode nasional.
+        # Pemancar dipilih langsung dengan mengeklik marker pada peta.
+        # Identitas disimpan di session_state; tidak ada menu pilihan MUX.
         center_lat, center_lon, zoom = -2.5, 118.0, 5
-        map_component_key = "digital_transmitter_map_default"
+        map_component_key = "digital_transmitter_map_click_select_v1"
         logged_in = bool(st.session_state.get("login"))
         admin_can_manage = logged_in and is_admin()
-        selected_row = None
         terrain_layers = []
-        if located:
-            labels = [
-                f"{r.get('provinsi', '')} / {r.get('wilayah', '')} / {r.get('mux', '')}"
-                for r in located
-            ]
-            # Opsi kosong menjadi nilai awal: tidak ada MUX yang dipilih otomatis.
-            # Key baru juga mencegah nilai pilihan lama tersimpan dari versi sebelumnya.
-            selected_idx = st.selectbox(
-                "Pilih MUX / pemancar",
-                options=[None] + list(range(len(located))),
-                index=0,
-                format_func=lambda i: "Pilih MUX/pemancar (opsional)" if i is None else labels[i],
-                key="map_mux_to_position_v2",
+        selected_identity = st.session_state.get("map_selected_broadcast_identity")
+        selected_row = next(
+            (
+                r for r in located
+                if selected_identity
+                and r.get("transmitter_id") == selected_identity[0]
+                and r.get("mux_id") == selected_identity[1]
+            ),
+            None,
+        )
+        if selected_row is not None:
+            center_lat, center_lon = selected_row["latitude"], selected_row["longitude"]
+            zoom = 12
+            if st.button("✖ Hapus pilihan pemancar", key="clear_map_selected_transmitter"):
+                st.session_state.pop("map_selected_broadcast_identity", None)
+                st.rerun()
+            st.caption(
+                f"Pemancar terpilih: {selected_row.get('wilayah', '')} / "
+                f"{selected_row.get('mux', '')}. Klik titik lain untuk mengganti pilihan."
             )
-            if selected_idx is not None:
-                selected_row = located[selected_idx]
-                center_lat, center_lon = selected_row["latitude"], selected_row["longitude"]
-                # Zoom hanya setelah pengguna memilih pemancar.
-                zoom = 12
-                map_component_key = f"digital_transmitter_map_{selected_idx}"
-            else:
-                st.caption("Pilih MUX/pemancar jika ingin melihat prediksi cakupan dan laporan pengukurannya. Seluruh titik pemancar tetap ditampilkan pada peta.")
+        elif located:
+            st.caption(
+                "Klik salah satu titik pemancar pada peta untuk menampilkan prediksi terrain "
+                "dan pengukuran sinyalnya. Belum ada pemancar yang dipilih."
+            )
         else:
             st.warning("Belum ada pemancar dengan koordinat valid.")
         if admin_can_manage:
@@ -1316,6 +1319,37 @@ def display_broadcast_map():
             fmap, width=None, height=560, use_container_width=True,
             key=map_component_key
         ) or {}
+
+        # Klik marker menghasilkan koordinat objek yang diklik. Cocokkan hanya
+        # dengan marker terdekat dalam radius kecil agar klik area kosong tidak
+        # memilih pemancar secara tidak sengaja.
+        clicked = map_state.get("last_object_clicked") if isinstance(map_state, dict) else None
+        if isinstance(clicked, dict) and located:
+            try:
+                clicked_lat = float(clicked.get("lat"))
+                clicked_lon = float(clicked.get("lng", clicked.get("lon")))
+                nearest_row = None
+                nearest_distance_km = float("inf")
+                for candidate in located:
+                    dlat = (candidate["latitude"] - clicked_lat) * 111.0
+                    dlon = (candidate["longitude"] - clicked_lon) * 111.0 * math.cos(math.radians(clicked_lat))
+                    distance_km = math.hypot(dlat, dlon)
+                    if distance_km < nearest_distance_km:
+                        nearest_distance_km = distance_km
+                        nearest_row = candidate
+                # Toleransi 0,5 km untuk menangkap klik marker, bukan klik peta biasa.
+                if nearest_row is not None and nearest_distance_km <= 0.5:
+                    new_identity = (
+                        nearest_row.get("transmitter_id"),
+                        nearest_row.get("mux_id"),
+                    )
+                    current_identity = st.session_state.get("map_selected_broadcast_identity")
+                    if new_identity != current_identity:
+                        st.session_state["map_selected_broadcast_identity"] = new_identity
+                        st.rerun()
+            except (TypeError, ValueError):
+                pass
+
         map_center = map_state.get("center") if isinstance(map_state, dict) else None
         if isinstance(map_center, dict):
             try:
@@ -1328,7 +1362,7 @@ def display_broadcast_map():
         st.caption(
             f"{len(located)} titik pemancar dari database • {1 if selected_row else 0} pemancar dipilih • "
             f"{len(selected_measurements)} laporan pengukuran untuk MUX terpilih. "
-            "Semua titik pemancar berwarna merah; overlay berwarna dan lingkaran laporan hanya muncul setelah MUX dipilih."
+            "Klik marker pemancar untuk memilihnya; overlay prediksi dan lingkaran laporan hanya muncul setelah pemancar dipilih."
         )
 
         # Pengelolaan dan penambahan koordinat dipisahkan ke halaman "Tambah Titik Pemancar".
@@ -1340,14 +1374,14 @@ def display_broadcast_map():
                          f"{layer['min_dbm']:.1f} hingga {layer['max_dbm']:.1f} dBm.")
             st.caption("Perhitungan memakai spreading ruang bebas dan aproksimasi difraksi knife-edge dari DEM. Jarak maksimum dihitung dari link budget serta horizon radio efektif. ERP, frekuensi, tinggi antena, ambang RX, pola antena, clutter, interferensi, dan rugi sistem harus diverifikasi dengan data lapangan; hasil ini bukan prediksi sertifikasi atau jaminan penerimaan.")
         else:
-            st.info("Belum ada MUX yang dipilih. Pilih MUX/pemancar pada daftar di atas untuk mengaktifkan prediksi terrain dan melihat ringkasan propagasi.")
+            st.info("Belum ada pemancar yang dipilih. Klik titik pemancar pada peta untuk mengaktifkan prediksi terrain dan melihat ringkasan propagasi.")
 
         # Pengukuran aktual dari layar informasi sinyal pada perangkat TV/STB.
         st.subheader("📝 Kirim pengukuran aktual dari TV/STB")
         if not logged_in:
             st.info("Login diperlukan untuk mengirim laporan pengukuran.")
         elif selected_row is None:
-            st.info("Belum ada MUX yang dapat dipilih.")
+            st.info("Klik titik pemancar pada peta untuk memilih MUX dan mengirim pengukuran.")
         else:
             st.write(
                 "Buka menu *Informasi Sinyal* pada TV/STB ketika menonton kanal dari MUX ini, "

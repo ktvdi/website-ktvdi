@@ -297,7 +297,12 @@ def handle_event(event: dict[str, Any], session: dict[str, Any], secrets=None) -
             except (TypeError,ValueError): raise ValueError("Pemancar belum memiliki koordinat valid.")
             from terrain import _terrain_dem_coverage, _uhf_frequency_mhz
             if not _uhf_frequency_mhz(mux): raise ValueError("Prediksi terrain memerlukan kanal UHF 21–48.")
-            # Parameter simulasi hanya dipakai pada permintaan ini; tidak pernah ditulis ke Firebase.
+            # Tanpa parameter simulasi, gunakan data teknis pemancar yang tersimpan.
+            # Nilai fallback hanya dipakai oleh model bila data teknis belum tersedia.
+            # Jika form simulasi dikirim, semua override hanya berlaku untuk hitungan ini
+            # dan tidak pernah ditulis ke Firebase.
+            simulation_keys=("erp_w","tx_height_m","rx_height_m","rx_threshold_dbm","extra_loss_db")
+            is_simulation=any(k in event and str(event.get(k,"")).strip()!="" for k in simulation_keys)
             def sim_number(name, default, minimum, maximum):
                 raw=event.get(name, default)
                 try: value=float(raw)
@@ -305,15 +310,21 @@ def handle_event(event: dict[str, Any], session: dict[str, Any], secrets=None) -
                 if not math.isfinite(value) or value<minimum or value>maximum:
                     raise ValueError(f"Nilai {name} di luar batas yang diizinkan.")
                 return value
-            sim_erp=sim_number("erp_w",1000,0.1,10000000)
-            sim_tx=sim_number("tx_height_m",30,1,1000)
             sim_rx=sim_number("rx_height_m",10,1,300)
             sim_threshold=sim_number("rx_threshold_dbm",-90,-130,-30)
             sim_loss=sim_number("extra_loss_db",4,0,60)
-            # Nilai ERP dan tinggi TX dari form simulasi menjadi override sementara.
-            sim_row={**row,"detail":{**(row.get("detail") or {}),"erp_w":sim_erp,"tx_height_m":sim_tx}}
-            layers=_terrain_dem_coverage([ {**sim_row,"latitude":lat,"longitude":lon} ],lat,lon,
-                erp_watt=sim_erp,tx_height_m=sim_tx,rx_height_m=sim_rx,
+            if is_simulation:
+                sim_erp=sim_number("erp_w",1000,0.1,10000000)
+                sim_tx=sim_number("tx_height_m",30,1,1000)
+                tx_for_calc={**row,"detail":{**(row.get("detail") or {}),"erp_w":sim_erp,"tx_height_m":sim_tx}}
+                fallback_erp=sim_erp
+                fallback_tx=sim_tx
+            else:
+                tx_for_calc=row
+                fallback_erp=1000.0
+                fallback_tx=30.0
+            layers=_terrain_dem_coverage([{**tx_for_calc,"latitude":lat,"longitude":lon}],lat,lon,
+                erp_watt=fallback_erp,tx_height_m=fallback_tx,rx_height_m=sim_rx,
                 rx_threshold_dbm=sim_threshold,extra_loss_db=sim_loss,max_transmitters=1)
             if not layers: raise ValueError("Tidak ada hasil prediksi terrain.")
             from io import BytesIO

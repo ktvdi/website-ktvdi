@@ -75,3 +75,24 @@
   max-height:none;
   overflow:visible;
 }
+
+/* Menu Login dibuat menonjol dan terpisah dari navigasi utama */
+.nav button.login-nav{
+  margin-left:8px;
+  padding-left:18px;
+  padding-right:18px;
+  border:1px solid #0b6b9a;
+  border-radius:999px;
+  background:#0b6b9a;
+  color:#fff;
+  font-weight:800;
+  box-shadow:0 3px 9px #0b6b9a30;
+}
+.nav button.login-nav:hover,.nav button.login-nav.active{
+  background:#084f75;
+  border-color:#084f75;
+  color:#fff;
+}
+@media(max-width:720px){
+  .nav button.login-nav{margin-left:0;text-align:center}
+}

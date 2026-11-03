@@ -556,6 +556,7 @@ def display_broadcast_map():
 
         # Tampilan hanya untuk satu pemancar yang dipilih; tidak ada mode nasional.
         center_lat, center_lon, zoom = -2.5, 118.0, 5
+        map_component_key = "digital_transmitter_map_default"
         logged_in = bool(st.session_state.get("login"))
         admin_can_manage = logged_in and is_admin()
         selected_row = None
@@ -568,7 +569,10 @@ def display_broadcast_map():
             )
             selected_row = located[selected_idx]
             center_lat, center_lon = selected_row["latitude"], selected_row["longitude"]
-            zoom = 9
+            # Zoom ke area pemancar yang dipilih. Key berubah saat pilihan MUX berubah
+            # agar komponen peta dimuat ulang dengan pusat dan zoom yang baru.
+            zoom = 12
+            map_component_key = f"digital_transmitter_map_{selected_idx}"
         else:
             st.warning("Belum ada pemancar dengan koordinat valid.")
         if admin_can_manage:
@@ -694,13 +698,8 @@ def display_broadcast_map():
                 )
             ).add_to(fmap)
 
-        # Awali peta dengan seluruh lokasi pemancar dalam database terlihat.
-        # Overlay terrain tetap hanya dihitung untuk selected_row.
-        if len(located) > 1:
-            fmap.fit_bounds(
-                [[r["latitude"], r["longitude"]] for r in located],
-                padding=(24, 24)
-            )
+        # Peta tetap berpusat pada pemancar terpilih; titik pemancar lain tetap
+        # ditampilkan, tetapi tidak mengubah zoom/extent peta.
 
         # Pengukuran aktual hanya untuk MUX yang sedang dipilih.
         selected_measurements = [
@@ -735,7 +734,7 @@ def display_broadcast_map():
 
         map_result = st_folium(
             fmap, width=None, height=560, use_container_width=True,
-            key="digital_transmitter_map",
+            key=map_component_key,
             returned_objects=["center", "zoom"]
         )
         st.caption(

@@ -37,11 +37,18 @@ try:
             pdata=db.reference("provinsi").get() or {}
             provinces=sorted(pdata.values())
         except Exception: provinces=[]
-    event=_component()(result=st.session_state.ktvdi_result,
+    # Kirim hasil aksi ke komponen hanya sekali. Tanpa konsumsi satu-kali,
+    # hasil lama (termasuk pesan "Aksi tidak dikenal") ikut terkirim lagi
+    # setiap Streamlit melakukan rerun/navigasi.
+    result_to_send = st.session_state.ktvdi_result
+    event=_component()(result=result_to_send,
         auth=st.session_state.ktvdi_session.get("auth"), stats=get_stats(), rows=rows,
         changes=get_recent_changes(), provinces=provinces,
         map_last_updated=get_latest_transmitter_update_timestamp(),
         key="ktvdi_web_frontend", default=None)
+    if result_to_send is not None:
+        st.session_state.ktvdi_result = None
+
     if isinstance(event,dict) and event.get("event_id")!=st.session_state.ktvdi_event_id:
         st.session_state.ktvdi_event_id=event.get("event_id")
         st.session_state.ktvdi_result=handle_event(event,st.session_state.ktvdi_session,st.secrets)

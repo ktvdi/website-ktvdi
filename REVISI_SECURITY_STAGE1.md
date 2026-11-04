@@ -34,3 +34,14 @@
 - Pemilik MUX tidak otomatis mendapat hak atas titik koordinat jika bukan pembuat titik.
 - Titik lama yang belum memiliki catatan pembuat hanya dapat dikelola admin.
 - Pemeriksaan hak akses dilakukan di backend; kontrol frontend hanya membantu menampilkan tombol yang sesuai.
+
+
+## Mekanisme persetujuan perubahan titik pemancar
+- Menu **Tambah Titik Pemancar** diubah namanya menjadi **Kelola Titik Pemancar**.
+- Pembuat titik dan admin dapat mengubah/menghapus titik secara langsung.
+- Pengguna lain mengajukan perubahan disertai alasan melalui halaman Kelola Titik Pemancar.
+- Untuk titik yang memiliki identitas pembuat, permohonan dapat disetujui oleh admin atau pembuat titik (salah satu persetujuan cukup).
+- Untuk titik lama tanpa identitas pembuat, hanya admin yang dapat menyetujui permohonan.
+- Setelah disetujui, pemohon dapat menyimpan satu kali perubahan koordinat; persetujuan ditandai selesai.
+- Hak pemilik MUX tidak memberikan hak khusus atas titik pemancar.
+- Pengajuan, persetujuan, penolakan, dan perubahan dicatat dalam audit log.

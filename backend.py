@@ -335,6 +335,8 @@ def handle_event(event: dict[str, Any], session: dict[str, Any], secrets=None) -
             ref.set(after); _audit("update_transmitter_technical_data",prov,area,mux,username,before,after)
             return {"ok":True,"message":"Data teknis pemancar berhasil disimpan."}
         if action=="save_coordinates":
+            # Hak kelola titik pemancar terpisah dari kepemilikan data MUX.
+            # Pembuat titik (point_added_by_username) dan admin dapat mengubahnya.
             username=_require_auth(session); prov=_safe_key(event.get("provinsi"),"Provinsi"); area=_safe_key(event.get("wilayah"),"Wilayah"); mux=_safe_key(event.get("mux"),"MUX")
             try: lat=float(event.get("latitude")); lon=float(event.get("longitude"))
             except (TypeError,ValueError): raise ValueError("Koordinat harus berupa angka.")
@@ -343,16 +345,38 @@ def handle_event(event: dict[str, Any], session: dict[str, Any], secrets=None) -
             if not before: raise ValueError("Data MUX tidak ditemukan.")
             has=before.get("latitude") is not None and before.get("longitude") is not None
             admin=db.reference(f"admins/{username}").get() is True
-            if has and not admin: raise PermissionError("Koordinat yang sudah ada hanya dapat diubah admin.")
-            after={**before,"latitude":lat,"longitude":lon}; ref.set(after)
+            point_owner=before.get("point_added_by_username") if isinstance(before,dict) else None
+            if has and not admin and point_owner != username:
+                if point_owner:
+                    raise PermissionError("Hanya admin atau pengguna yang menambahkan titik ini yang dapat mengubahnya. Pemilik data MUX tidak otomatis memiliki hak atas titik pemancar.")
+                raise PermissionError("Titik lama belum memiliki catatan pembuat. Hanya admin yang dapat mengubahnya.")
+            user=db.reference(f"users/{username}").get() or {}
+            after={**before,"latitude":lat,"longitude":lon,
+                   "point_last_updated_by_username":username,
+                   "point_last_updated_by_name":user.get("nama",username),
+                   "point_last_updated_at":now_wib()}
+            if not has:
+                after.update({"point_added_by_username":username,
+                              "point_added_by_name":user.get("nama",username),
+                              "point_added_at":now_wib()})
+            ref.set(after)
             _audit("update_coordinates" if has else "add_coordinates",prov,area,mux,username,before,after)
-            return {"ok":True,"message":"Koordinat pemancar berhasil disimpan."}
+            return {"ok":True,"message":"Titik pemancar berhasil disimpan. Hak pengelola titik tercatat terpisah dari pemilik data MUX."}
         if action=="delete_coordinates":
-            username=_require_admin(session); prov=_safe_key(event.get("provinsi"),"Provinsi"); area=_safe_key(event.get("wilayah"),"Wilayah"); mux=_safe_key(event.get("mux"),"MUX")
+            username=_require_auth(session); prov=_safe_key(event.get("provinsi"),"Provinsi"); area=_safe_key(event.get("wilayah"),"Wilayah"); mux=_safe_key(event.get("mux"),"MUX")
             ref=db.reference(f"siaran/{prov}/{area}/{mux}"); before=ref.get() or {}
-            after={k:v for k,v in before.items() if k not in ("latitude","longitude")}; ref.set(after)
+            if not before or before.get("latitude") is None or before.get("longitude") is None:
+                raise ValueError("Titik koordinat tidak ditemukan.")
+            admin=db.reference(f"admins/{username}").get() is True
+            point_owner=before.get("point_added_by_username") if isinstance(before,dict) else None
+            if not admin and point_owner != username:
+                if point_owner:
+                    raise PermissionError("Hanya admin atau pengguna yang menambahkan titik ini yang dapat menghapusnya. Pemilik data MUX tidak otomatis memiliki hak atas titik pemancar.")
+                raise PermissionError("Titik lama belum memiliki catatan pembuat. Hanya admin yang dapat menghapusnya.")
+            point_keys=("latitude","longitude","point_added_by_username","point_added_by_name","point_added_at","point_last_updated_by_username","point_last_updated_by_name","point_last_updated_at")
+            after={k:v for k,v in before.items() if k not in point_keys}; ref.set(after)
             _audit("delete_coordinates",prov,area,mux,username,before,after)
-            return {"ok":True,"message":"Titik koordinat dihapus; data siaran tetap tersimpan."}
+            return {"ok":True,"message":"Titik pemancar dihapus; data MUX dan kanal siaran tetap tersimpan."}
         if action=="submit_measurement":
             username=_require_auth(session); prov=_safe_key(event.get("provinsi"),"Provinsi"); area=_safe_key(event.get("wilayah"),"Wilayah"); mux=_safe_key(event.get("mux"),"MUX")
             try: lat=float(event.get("latitude")); lon=float(event.get("longitude")); strength=int(event.get("strength")); quality=int(event.get("quality"))

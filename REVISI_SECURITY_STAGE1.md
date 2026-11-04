@@ -25,3 +25,12 @@
 - Seluruh pengunjung, termasuk yang belum login, dapat melihat, mencari, dan memfilter data MUX/kanal yang telah dimuat backend.
 - Pengunjung dapat membuka detail data; fitur kontribusi dan pengelolaan tetap memerlukan login serta pemeriksaan kepemilikan/admin.
 - Halaman ini hanya menampilkan data siaran, bukan kredensial, email, atau data privat akun.
+
+## Pemisahan hak akses titik pemancar dari data MUX
+- Kepemilikan data siaran/MUX tetap memakai `created_by_username`.
+- Titik koordinat memiliki identitas pengelola sendiri: `point_added_by_username`, `point_added_by_name`, dan `point_added_at`.
+- Pengguna yang pertama kali menambahkan koordinat dapat memperbarui atau menghapus titik tersebut.
+- Admin dapat memperbarui atau menghapus semua titik.
+- Pemilik MUX tidak otomatis mendapat hak atas titik koordinat jika bukan pembuat titik.
+- Titik lama yang belum memiliki catatan pembuat hanya dapat dikelola admin.
+- Pemeriksaan hak akses dilakukan di backend; kontrol frontend hanya membantu menampilkan tombol yang sesuai.

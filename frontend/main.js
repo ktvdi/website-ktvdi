@@ -5,7 +5,7 @@ const app=document.getElementById('main');
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const attr=s=>esc(s).replace(/`/g,'&#96;');
 const send=(action,data={})=>window.parent.postMessage({isStreamlitMessage:true,type:'streamlit:setComponentValue',value:{action,...data,event_id:Date.now().toString(36)+Math.random().toString(36).slice(2)}},'*');
-const height=()=>setTimeout(()=>window.parent.postMessage({isStreamlitMessage:true,type:'streamlit:setFrameHeight',height:Math.max(600,document.documentElement.scrollHeight)},'*'),60);
+const height=()=>requestAnimationFrame(()=>requestAnimationFrame(()=>{const h=Math.ceil(Math.max(document.body.scrollHeight,document.documentElement.scrollHeight));window.parent.postMessage({isStreamlitMessage:true,type:'streamlit:setFrameHeight',height:h},'*')}));
 const auth=()=>!!state.auth;
 const requireLogin=()=>{if(!auth()){state.page='login';render();notice('Silakan login untuk menggunakan fitur ini.');return false}return true};
 const notice=t=>{let n=document.getElementById('globalNotice');if(!n){n=document.createElement('div');n.id='globalNotice';n.className='notice';app.prepend(n)}n.textContent=t};

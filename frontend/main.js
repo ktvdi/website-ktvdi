@@ -8,13 +8,13 @@ const send=(action,data={})=>window.parent.postMessage({isStreamlitMessage:true,
 const height=()=>{
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     const root=document.getElementById('app');
-    const h=Math.ceil(Math.max(
-      root ? root.scrollHeight : 0,
-      root ? root.getBoundingClientRect().height : 0,
-      document.body.scrollHeight,
-      document.documentElement.scrollHeight
-    ));
-    window.parent.postMessage({isStreamlitMessage:true,type:'streamlit:setFrameHeight',height:Math.max(150,h)},'*');
+    if(!root)return;
+    const rootRect=root.getBoundingClientRect();
+    const rootStyle=getComputedStyle(root);
+    const bottomPadding=parseFloat(rootStyle.paddingBottom)||0;
+    const contentBottom=Math.max(root.scrollHeight,rootRect.height);
+    const h=Math.ceil(contentBottom-bottomPadding);
+    window.parent.postMessage({isStreamlitMessage:true,type:'streamlit:setFrameHeight',height:Math.max(1,h)},'*');
   }));
 };
 const auth=()=>!!state.auth;

@@ -198,3 +198,34 @@ body{background:radial-gradient(ellipse at 50% -20%,#d8f3ff 0,transparent 42%),#
 }
 /* Hindari ruang kosong buatan pada iframe; tinggi mengikuti konten aktual. */
 html,body{height:auto;min-height:0}
+
+
+/* PERBAIKAN SCROLL: biarkan dokumen dan iframe bertambah tinggi mengikuti konten */
+html {
+  height: auto !important;
+  min-height: 100% !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior-y: auto !important;
+}
+body {
+  height: auto !important;
+  min-height: 100vh !important;
+  overflow-x: hidden !important;
+  overflow-y: visible !important;
+  overscroll-behavior-y: auto !important;
+}
+.shell {
+  min-height: 100vh !important;
+  height: auto !important;
+  overflow: visible !important;
+}
+#main {
+  min-height: 0 !important;
+  height: auto !important;
+  flex: 1 0 auto !important;
+  overflow: visible !important;
+}
+.site-footer {
+  flex: 0 0 auto;
+}

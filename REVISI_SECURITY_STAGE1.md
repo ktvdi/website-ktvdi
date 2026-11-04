@@ -18,3 +18,10 @@
 - Pengujian ini perlu dilakukan pada akun yang memang memiliki data siaran. Jika belum ada, buat satu data uji melalui menu **Tambah Data** saat login dengan akun pengguna biasa.
 - Perubahan dalam ZIP tidak otomatis mengubah website yang sedang online. Deploy ulang proyek ini terlebih dahulu.
 - Otorisasi backend tetap wajib; menyembunyikan tombol di frontend bukan pengganti pemeriksaan server.
+
+
+## Halaman Database Siaran publik
+- Menambahkan menu **Database Siaran** pada navigasi utama.
+- Seluruh pengunjung, termasuk yang belum login, dapat melihat, mencari, dan memfilter data MUX/kanal yang telah dimuat backend.
+- Pengunjung dapat membuka detail data; fitur kontribusi dan pengelolaan tetap memerlukan login serta pemeriksaan kepemilikan/admin.
+- Halaman ini hanya menampilkan data siaran, bukan kredensial, email, atau data privat akun.

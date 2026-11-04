@@ -272,7 +272,7 @@ def handle_event(event: dict[str, Any], session: dict[str, Any], secrets=None) -
             path=f"siaran/{prov}/{area}/{mux}"; before=db.reference(path).get()
             if before: raise ValueError("Data MUX tersebut sudah ada. Gunakan fitur edit.")
             user=db.reference(f"users/{username}"); udata=user.get() or {}; stamp=now_wib()
-            data={"siaran":channels,"last_updated_by_username":username,"last_updated_by_name":udata.get("nama",username),"last_updated_date":now_wib("%d-%m-%Y"),"last_updated_time":now_wib("%H:%M:%S WIB")}
+            data={"siaran":channels,"created_by_username":username,"last_updated_by_username":username,"last_updated_by_name":udata.get("nama",username),"last_updated_date":now_wib("%d-%m-%Y"),"last_updated_time":now_wib("%H:%M:%S WIB")}
             db.reference(path).set(data); _audit("add_broadcast",prov,area,mux,username,None,data)
             user.update({"points":int(udata.get("points",0))+10}); db.reference("app_metadata/last_leaderboard_update_timestamp").set(stamp[:19])
             return {"ok":True,"message":"Data siaran berhasil ditambahkan. Anda mendapat 10 poin."}
@@ -280,10 +280,17 @@ def handle_event(event: dict[str, Any], session: dict[str, Any], secrets=None) -
             username=_require_auth(session); prov=_safe_key(event.get("provinsi"),"Provinsi"); area=_safe_key(event.get("wilayah"),"Wilayah"); mux=_safe_key(event.get("mux"),"MUX")
             ref=db.reference(f"siaran/{prov}/{area}/{mux}"); before=ref.get()
             if not before: raise ValueError("Data MUX tidak ditemukan.")
-            owner = before.get("last_updated_by_username") if isinstance(before,dict) else None
+            # created_by_username adalah pemilik tetap. Untuk data lama, gunakan
+            # last_updated_by_username sebagai fallback. Data tanpa identitas
+            # pemilik hanya boleh dikelola admin.
+            owner = None
+            if isinstance(before, dict):
+                owner = before.get("created_by_username") or before.get("last_updated_by_username")
             admin = db.reference(f"admins/{username}").get() is True
+            if not admin and (not owner or owner != username):
+                verb = "mengedit" if action == "edit_broadcast" else "menghapus"
+                raise PermissionError(f"Anda hanya dapat {verb} data yang Anda tambahkan. Data tanpa pemilik hanya dapat dikelola admin.")
             if action=="edit_broadcast":
-                if owner and owner != username and not admin: raise PermissionError("Anda hanya dapat mengedit data yang Anda tambahkan, kecuali admin.")
                 channels=sorted({x.strip() for x in str(event.get("siaran","")).split(",") if x.strip()})
                 if not channels: raise ValueError("Daftar kanal tidak boleh kosong.")
                 new_area=_safe_key(event.get("new_wilayah",area),"Wilayah baru"); new_mux=_safe_key(event.get("new_mux",mux),"MUX baru")
@@ -306,7 +313,9 @@ def handle_event(event: dict[str, Any], session: dict[str, Any], secrets=None) -
                 ref.delete(); _audit("delete_broadcast",prov,area,mux,username,before,None)
             return {"ok":True,"message":"Perubahan data berhasil disimpan."}
         if action=="save_technical":
-            username=_require_auth(session); prov=_safe_key(event.get("provinsi"),"Provinsi"); area=_safe_key(event.get("wilayah"),"Wilayah"); mux=_safe_key(event.get("mux"),"MUX")
+            # Parameter teknis memengaruhi estimasi cakupan; perubahan harus
+            # diverifikasi dan hanya dapat dilakukan oleh admin.
+            username=_require_admin(session); prov=_safe_key(event.get("provinsi"),"Provinsi"); area=_safe_key(event.get("wilayah"),"Wilayah"); mux=_safe_key(event.get("mux"),"MUX")
             ref=db.reference(f"siaran/{prov}/{area}/{mux}"); before=ref.get() or {}
             if not before: raise ValueError("Data MUX tidak ditemukan.")
             parsed={}

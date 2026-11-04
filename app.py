@@ -9,7 +9,7 @@ except ImportError:
     def get_latest_transmitter_update_timestamp():
         return None
 
-st.set_page_config(page_title="KTVDI", page_icon="📡", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="KTVDI – Komunitas TV Digital Indonesia", page_icon=str(Path(__file__).parent / "Logo_KTVDI.png"), layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
 <style>
 [data-testid="stSidebar"],[data-testid="stSidebarNav"],[data-testid="collapsedControl"],

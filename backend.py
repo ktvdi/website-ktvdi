@@ -130,7 +130,8 @@ def search_broadcasts(query: str) -> list[dict[str, Any]]:
 
 def get_recent_changes(limit=50):
     logs=db.reference("audit_logs").get() or {}
-    allowed={"add_broadcast","edit_broadcast","delete_broadcast","restore_broadcast"}
+    allowed={"add_broadcast","edit_broadcast","delete_broadcast","restore_broadcast",
+             "approve_broadcast_edit_request","reject_broadcast_edit_request"}
     values=[v for v in logs.values() if isinstance(v,dict) and v.get("action") in allowed]
     values.sort(key=lambda x:x.get("timestamp",""),reverse=True)
     return values[:limit]
@@ -260,6 +261,87 @@ def handle_event(event: dict[str, Any], session: dict[str, Any], secrets=None) -
             db.reference(f"users/{pending['username']}").update({"password":hash_password(pw)})
             session.pop("pending_reset",None)
             return {"ok":True,"message":"Password berhasil direset. Silakan login."}
+        if action=="load_broadcast_edit_requests":
+            username=_require_auth(session)
+            is_admin=db.reference(f"admins/{username}").get() is True
+            tree=db.reference("broadcast_edit_requests").get() or {}
+            visible=[]
+            for prov, areas in (tree.items() if isinstance(tree,dict) else []):
+                if not isinstance(areas,dict): continue
+                for area, muxes in areas.items():
+                    if not isinstance(muxes,dict): continue
+                    for mux, requests in muxes.items():
+                        if not isinstance(requests,dict): continue
+                        record=db.reference(f"siaran/{prov}/{area}/{mux}").get() or {}
+                        owner=(record.get("created_by_username") or record.get("last_updated_by_username")) if isinstance(record,dict) else None
+                        for requester, req in requests.items():
+                            if not isinstance(req,dict) or req.get("status") not in ("Menunggu","Disetujui","Ditolak"): continue
+                            if is_admin or requester==username or (owner and owner==username):
+                                visible.append({"provinsi":prov,"wilayah":area,"mux":mux,"requester":requester,**req,
+                                    "can_review":bool(is_admin or (owner and owner==username))})
+            visible.sort(key=lambda x:(x.get("status")!="Menunggu",x.get("requested_at","")),reverse=False)
+            return {"ok":True,"broadcast_edit_requests":visible}
+        if action=="submit_broadcast_edit_request":
+            username=_require_auth(session)
+            prov=_safe_key(event.get("provinsi"),"Provinsi"); area=_safe_key(event.get("wilayah"),"Wilayah"); mux=_safe_key(event.get("mux"),"MUX")
+            reason=str(event.get("reason","")).strip()
+            if len(reason)<10: raise ValueError("Alasan perubahan minimal 10 karakter.")
+            if len(reason)>1000: raise ValueError("Alasan terlalu panjang (maksimal 1.000 karakter).")
+            raw=event.get("siaran",[])
+            channels=raw if isinstance(raw,list) else str(raw).split(",")
+            channels=sorted({str(x).strip() for x in channels if str(x).strip()})
+            if not channels: raise ValueError("Usulan daftar kanal tidak boleh kosong.")
+            if len(channels)>100: raise ValueError("Maksimal 100 kanal dalam satu permohonan.")
+            if any(not re.fullmatch(r"^[a-zA-Z0-9\s&()_.,'-]+$",c) for c in channels):
+                raise ValueError("Nama kanal mengandung karakter yang tidak diizinkan.")
+            record=db.reference(f"siaran/{prov}/{area}/{mux}").get()
+            if not record: raise ValueError("Data MUX tidak ditemukan.")
+            owner=(record.get("created_by_username") or record.get("last_updated_by_username")) if isinstance(record,dict) else None
+            is_admin=db.reference(f"admins/{username}").get() is True
+            if is_admin or owner==username: raise ValueError("Anda sudah memiliki hak edit langsung untuk data ini.")
+            user=db.reference(f"users/{username}").get() or {}
+            req_ref=db.reference(f"broadcast_edit_requests/{prov}/{area}/{mux}/{username}")
+            previous=req_ref.get() or {}
+            if previous.get("status")=="Menunggu": raise ValueError("Permohonan Anda untuk MUX ini masih menunggu persetujuan.")
+            req={"requester_name":user.get("nama",username),"reason":reason,"proposed_channels":channels,
+                 "current_channels":record.get("siaran",[]) if isinstance(record,dict) else [],
+                 "status":"Menunggu","requested_at":now_wib(),
+                 "owner_username":owner or ""}
+            req_ref.set(req)
+            _audit("submit_broadcast_edit_request",prov,area,mux,username,{"siaran":req["current_channels"]},req)
+            return {"ok":True,"message":"Permohonan perubahan kanal dikirim kepada admin/penginput data."}
+        if action in ("approve_broadcast_edit_request","reject_broadcast_edit_request"):
+            username=_require_auth(session)
+            prov=_safe_key(event.get("provinsi"),"Provinsi"); area=_safe_key(event.get("wilayah"),"Wilayah"); mux=_safe_key(event.get("mux"),"MUX")
+            requester=_safe_key(event.get("requester"),"Username")
+            ref=db.reference(f"siaran/{prov}/{area}/{mux}"); record=ref.get()
+            if not record: raise ValueError("Data MUX tidak ditemukan.")
+            owner=(record.get("created_by_username") or record.get("last_updated_by_username")) if isinstance(record,dict) else None
+            is_admin=db.reference(f"admins/{username}").get() is True
+            if not is_admin and owner!=username: raise PermissionError("Hanya admin atau penginput asli yang dapat memproses permohonan.")
+            req_ref=db.reference(f"broadcast_edit_requests/{prov}/{area}/{mux}/{requester}")
+            req=req_ref.get() or {}
+            if req.get("status")!="Menunggu": raise ValueError("Permohonan sudah diproses atau tidak ditemukan.")
+            before=record
+            if action=="approve_broadcast_edit_request":
+                channels=req.get("proposed_channels") or []
+                if not isinstance(channels,list) or not channels: raise ValueError("Usulan kanal tidak valid.")
+                if (record.get("siaran",[]) if isinstance(record,dict) else []) != req.get("current_channels",[]):
+                    raise ValueError("Daftar kanal telah berubah sejak permohonan dibuat. Tinjau ulang sebelum menyetujui.")
+                if any(not isinstance(c,str) or not c.strip() or not re.fullmatch(r"^[a-zA-Z0-9\s&()_.,'-]+$",c) for c in channels):
+                    raise ValueError("Usulan berisi nama kanal yang tidak valid.")
+                after={**record,"siaran":channels,"last_updated_by_username":username,
+                    "last_updated_by_name":(db.reference(f"users/{username}").get() or {}).get("nama",username),
+                    "last_updated_date":now_wib("%d-%m-%Y"),"last_updated_time":now_wib("%H:%M:%S WIB")}
+                ref.set(after)
+                req.update({"status":"Disetujui","reviewed_by_username":username,"reviewed_at":now_wib(),
+                    "applied_at":now_wib()})
+                _audit("approve_broadcast_edit_request",prov,area,mux,username,before,after)
+            else:
+                req.update({"status":"Ditolak","reviewed_by_username":username,"reviewed_at":now_wib()})
+                _audit("reject_broadcast_edit_request",prov,area,mux,username,req,None)
+            req_ref.set(req)
+            return {"ok":True,"message":"Permohonan perubahan kanal "+("disetujui dan langsung diterapkan." if action=="approve_broadcast_edit_request" else "ditolak.")}
         if action=="add_broadcast":
             username=_require_auth(session); prov=_safe_key(event.get("provinsi"),"Provinsi"); area=_safe_key(event.get("wilayah"),"Wilayah"); mux=_safe_key(event.get("mux"),"MUX")
             channels=sorted({x.strip() for x in str(event.get("siaran","")).split(",") if x.strip()})

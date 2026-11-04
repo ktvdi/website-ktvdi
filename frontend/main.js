@@ -75,7 +75,7 @@ else if(state.page==='leaderboard')app.innerHTML=`<section class="panel"><h2><i 
 else if(state.page==='profile')app.innerHTML=profilePage();
 else if(state.page==='admin')app.innerHTML=adminPage();
 else if(state.page==='chat')app.innerHTML=`<section class="panel"><h2><i data-lucide="bot" aria-hidden="true"></i> Chatbot KTVDI</h2>${auth()?`<div id="chatHistory">${state.chat.map(m=>`<article class="result"><b>${m.role==='user'?'Anda':'KTVDI'}</b><p>${esc(m.text)}</p></article>`).join('')}</div><form id="chatForm" class="field"><textarea name="message" required placeholder="Tanyakan seputar TV digital..."></textarea><button class="action">Kirim</button></form>`:'<p>Login diperlukan untuk menggunakan chatbot.</p><button class="action" data-page="login">Login</button>'}</section>`;
-height();if(state.page==='map')initMap();}
+height();if(window.lucide&&typeof window.lucide.createIcons==='function')window.lucide.createIcons();if(state.page==='map')initMap();}
 function databasePage(){
  const provinces=[...new Set(state.rows.map(r=>r.provinsi).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'id'));
  const areas=[...new Set(state.rows.filter(r=>!state.databaseProvince||r.provinsi===state.databaseProvince).map(r=>r.wilayah).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'id'));
@@ -137,6 +137,6 @@ if(ktvdiRoot && 'MutationObserver' in window){
   const ktvdiMutationObserver=new MutationObserver(()=>height());
   ktvdiMutationObserver.observe(ktvdiRoot,{childList:true,subtree:true,attributes:true,characterData:true});
 }
-window.addEventListener('load',height);
+window.addEventListener('load',()=>{height();if(window.lucide&&typeof window.lucide.createIcons==='function')window.lucide.createIcons();if(state.page==='map'&&!state.map&&window.L)initMap();});
 window.addEventListener('resize',height);
 })();

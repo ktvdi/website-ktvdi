@@ -284,3 +284,42 @@ body {
     margin-top: 10px !important;
   }
 }
+
+
+/* FINALISASI BATAS HALAMAN: footer adalah elemen terakhir, tanpa area scroll tambahan */
+html, body {
+  margin: 0 !important;
+  height: auto !important;
+  min-height: 100% !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior-y: none !important;
+}
+body {
+  min-height: 100vh !important;
+}
+#app.shell {
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 100vh !important;
+  height: auto !important;
+  overflow: visible !important;
+}
+#main {
+  flex: 0 0 auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+  overflow: visible !important;
+}
+.site-footer {
+  position: relative !important;
+  flex: 0 0 auto !important;
+  margin-top: 10px !important;
+  margin-bottom: 0 !important;
+}
+/* Cegah efek overscroll/bounce melewati batas awal atau akhir dokumen. */
+html, body, #app {
+  overscroll-behavior-y: none !important;
+}

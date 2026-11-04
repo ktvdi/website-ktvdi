@@ -421,3 +421,15 @@ a, button, [role="button"], .nav button {
     box-shadow: none !important;
   }
 }
+
+/* Lucide icon system */
+i[data-lucide], svg.lucide {
+  width: 1.05em;
+  height: 1.05em;
+  display: inline-block;
+  vertical-align: -0.16em;
+  stroke-width: 1.9;
+  flex: 0 0 auto;
+}
+button i[data-lucide], a i[data-lucide] { margin-right: .38em; }
+.menu-toggle i[data-lucide] { margin: 0; width: 1.25em; height: 1.25em; }

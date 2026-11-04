@@ -45,3 +45,10 @@
 - Setelah disetujui, pemohon dapat menyimpan satu kali perubahan koordinat; persetujuan ditandai selesai.
 - Hak pemilik MUX tidak memberikan hak khusus atas titik pemancar.
 - Pengajuan, persetujuan, penolakan, dan perubahan dicatat dalam audit log.
+
+
+## Kotak masuk persetujuan titik pemancar
+- Halaman Kelola Titik Pemancar kini menampilkan kotak masuk permohonan yang dapat diputuskan oleh akun yang sedang login.
+- Admin melihat seluruh permohonan berstatus Menunggu, termasuk titik tanpa identitas pembuat.
+- Pembuat titik melihat permohonan untuk titik yang dibuatnya.
+- Tombol Setujui/Tolak pada kotak masuk membawa identitas titik dari kartu permohonan, sehingga tidak bergantung pada titik yang sedang dipilih.

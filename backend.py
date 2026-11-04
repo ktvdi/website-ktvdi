@@ -1,10 +1,13 @@
 """Layanan backend KTVDI. Seluruh akses Firebase dan rahasia hanya di sisi Python."""
 from __future__ import annotations
 import hashlib
+import hmac
 import math, random, re, smtplib
 from datetime import datetime
 from email.mime.text import MIMEText
 from typing import Any
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 import firebase_admin
 from firebase_admin import credentials, db
 from pytz import timezone
@@ -24,9 +27,43 @@ def initialize_firebase(secrets) -> None:
         firebase_admin.initialize_app(cred, {"databaseURL": DB_URL})
 
 
+# Argon2id untuk password akun. Parameter awal ini perlu diuji pada hosting produksi.
+_PASSWORD_HASHER = PasswordHasher(
+    time_cost=2,
+    memory_cost=19_456,  # KiB (19 MiB)
+    parallelism=1,
+)
+
+
 def hash_password(password: str) -> str:
-    # SHA-256 dipertahankan untuk kompatibilitas akun lama.
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Hash password baru menggunakan Argon2id."""
+    return _PASSWORD_HASHER.hash(password)
+
+
+def hash_otp(otp: str) -> str:
+    """Hash OTP sementara; OTP bukan password dan hanya berlaku singkat."""
+    return hashlib.sha256(otp.encode("utf-8")).hexdigest()
+
+
+def verify_password_and_migrate(password: str, stored_hash: str) -> tuple[bool, str | None]:
+    """Verifikasi Argon2id atau SHA-256 lama; kembalikan hash baru bila perlu."""
+    if not isinstance(stored_hash, str) or not stored_hash:
+        return False, None
+
+    # Hash SHA-256 lama memiliki 64 karakter heksadesimal.
+    if re.fullmatch(r"[a-fA-F0-9]{64}", stored_hash):
+        legacy_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
+        if hmac.compare_digest(legacy_hash.lower(), stored_hash.lower()):
+            return True, hash_password(password)
+        return False, None
+
+    try:
+        valid = _PASSWORD_HASHER.verify(stored_hash, password)
+    except (VerifyMismatchError, VerificationError, InvalidHashError):
+        return False, None
+
+    replacement = hash_password(password) if _PASSWORD_HASHER.check_needs_rehash(stored_hash) else None
+    return bool(valid), replacement
 
 
 def _safe_key(value: str, label: str) -> str:
@@ -118,11 +155,26 @@ def _require_admin(session):
 
 
 def login(username: str, password: str) -> dict[str, Any]:
-    username=username.strip(); users=db.reference("users").get() or {}; user=users.get(username)
-    if not username or not password or not user or user.get("password") != hash_password(password):
-        return {"ok":False,"message":"Username atau password salah."}
-    return {"ok":True,"username":username,"nama":user.get("nama",username),"points":user.get("points",0),
-            "admin":db.reference(f"admins/{username}").get() is True}
+    username = username.strip()
+    users = db.reference("users").get() or {}
+    user = users.get(username)
+    if not username or not password or not isinstance(user, dict):
+        return {"ok": False, "message": "Username atau password salah."}
+
+    valid, replacement_hash = verify_password_and_migrate(
+        password, user.get("password", "")
+    )
+    if not valid:
+        return {"ok": False, "message": "Username atau password salah."}
+
+    # Migrasi hash lama atau pembaruan parameter Argon2id dilakukan setelah
+    # password terbukti benar. Password asli tidak pernah disimpan.
+    if replacement_hash:
+        db.reference(f"users/{username}").update({"password": replacement_hash})
+
+    return {"ok": True, "username": username, "nama": user.get("nama", username),
+            "points": user.get("points", 0),
+            "admin": db.reference(f"admins/{username}").get() is True}
 
 
 def _send_otp(secrets, email, otp, purpose):
@@ -181,12 +233,12 @@ def handle_event(event: dict[str, Any], session: dict[str, Any], secrets=None) -
             if any(str(v.get("email"," ")).lower()==email for v in users.values() if isinstance(v,dict)): raise ValueError("Email sudah terdaftar.")
             otp=f"{random.SystemRandom().randint(0,999999):06d}"
             _send_otp(secrets,email,otp,"register")
-            session["pending_register"]={"nama":name,"email":email,"username":user,"password":hash_password(pw),"otp_hash":hash_password(otp),"expires":datetime.now().timestamp()+600}
+            session["pending_register"]={"nama":name,"email":email,"username":user,"password":hash_password(pw),"otp_hash":hash_otp(otp),"expires":datetime.now().timestamp()+600}
             return {"ok":True,"message":"OTP pendaftaran dikirim ke email. Berlaku 10 menit."}
         if action=="register_verify":
             pending=session.get("pending_register") or {}
             if not pending or datetime.now().timestamp()>pending.get("expires",0): raise ValueError("Sesi OTP tidak ada atau sudah kedaluwarsa. Ulangi pendaftaran.")
-            if hash_password(str(event.get("otp","")))!=pending["otp_hash"]: raise ValueError("Kode OTP salah.")
+            if hash_otp(str(event.get("otp","")))!=pending["otp_hash"]: raise ValueError("Kode OTP salah.")
             username=pending["username"]
             db.reference(f"users/{username}").set({"nama":pending["nama"],"email":pending["email"],"password":pending["password"],"points":0})
             session.pop("pending_register",None)
@@ -197,12 +249,12 @@ def handle_event(event: dict[str, Any], session: dict[str, Any], secrets=None) -
             found=next(((u,v) for u,v in users.items() if str(v.get("email"," ")).lower()==email),None)
             if not found: raise ValueError("Email tidak ditemukan atau tidak terdaftar.")
             otp=f"{random.SystemRandom().randint(0,999999):06d}"; _send_otp(secrets,email,otp,"reset")
-            session["pending_reset"]={"username":found[0],"otp_hash":hash_password(otp),"expires":datetime.now().timestamp()+600}
+            session["pending_reset"]={"username":found[0],"otp_hash":hash_otp(otp),"expires":datetime.now().timestamp()+600}
             return {"ok":True,"message":f"OTP dikirim. Username akun: {found[0]}. Berlaku 10 menit."}
         if action=="forgot_reset":
             pending=session.get("pending_reset") or {}
             if not pending or datetime.now().timestamp()>pending.get("expires",0): raise ValueError("Sesi OTP tidak ada atau sudah kedaluwarsa.")
-            if hash_password(str(event.get("otp","")))!=pending["otp_hash"]: raise ValueError("Kode OTP salah.")
+            if hash_otp(str(event.get("otp","")))!=pending["otp_hash"]: raise ValueError("Kode OTP salah.")
             pw=str(event.get("password",""))
             if len(pw)<6: raise ValueError("Password minimal 6 karakter.")
             db.reference(f"users/{pending['username']}").update({"password":hash_password(pw)})

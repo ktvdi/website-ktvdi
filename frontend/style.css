@@ -229,3 +229,58 @@ body {
 .site-footer {
   flex: 0 0 auto;
 }
+
+
+/* PENYESUAIAN POSISI FOOTER DAN LOGO HEADER */
+.shell {
+  min-height: 100vh !important;
+  height: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+.topbar {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+}
+.topbar > .brand {
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 !important;
+  z-index: 2 !important;
+}
+.topbar > .account {
+  margin-left: auto !important;
+  position: relative !important;
+  z-index: 3 !important;
+}
+.topbar > .menu-toggle {
+  position: relative !important;
+  z-index: 3 !important;
+}
+#main {
+  flex: 0 0 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  padding-bottom: 0 !important;
+  overflow: visible !important;
+}
+.site-footer {
+  flex: 0 0 auto !important;
+  margin-top: 12px !important;
+}
+@media (max-width: 560px) {
+  .topbar > .brand {
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+  }
+  .site-footer {
+    margin-top: 10px !important;
+  }
+}

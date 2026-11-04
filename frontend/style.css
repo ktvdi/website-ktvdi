@@ -392,3 +392,32 @@ html, body {
 #app.shell > .site-footer:last-child {
   margin-bottom: 0 !important;
 }
+
+
+/* HILANGKAN HIGHLIGHT BIRU SAAT LINK/TOMBOL DISENTUH DI BROWSER */
+a, button, [role="button"], input[type="button"], input[type="submit"], select, summary {
+  -webkit-tap-highlight-color: transparent !important;
+  tap-highlight-color: transparent !important;
+}
+a:focus, a:focus-visible,
+button:focus, button:focus-visible,
+[role="button"]:focus, [role="button"]:focus-visible,
+input[type="button"]:focus, input[type="submit"]:focus,
+summary:focus, summary:focus-visible {
+  -webkit-tap-highlight-color: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+/* Nonaktifkan warna seleksi teks biru pada elemen interaktif saja. */
+a, button, [role="button"], .nav button {
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* Tetap tampilkan indikator fokus keyboard yang tidak memakai highlight biru. */
+@media (hover: none) and (pointer: coarse) {
+  a:active, button:active, [role="button"]:active {
+    -webkit-tap-highlight-color: transparent !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+}

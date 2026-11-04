@@ -323,3 +323,38 @@ body {
 html, body, #app {
   overscroll-behavior-y: none !important;
 }
+
+
+/* FIX FINAL: iframe mengikuti tinggi konten; scroll dilakukan oleh halaman Streamlit */
+html, body {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: visible !important;
+}
+#app.shell {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  height: auto !important;
+  overflow: visible !important;
+}
+#main {
+  flex: 0 0 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  overflow: visible !important;
+  padding-bottom: 0 !important;
+}
+.site-footer {
+  flex: 0 0 auto !important;
+  margin-top: 12px !important;
+  margin-bottom: 0 !important;
+}
+/* Tidak mengunci scroll dengan overscroll-behavior. */
+html, body, #app.shell {
+  overscroll-behavior-y: auto !important;
+}

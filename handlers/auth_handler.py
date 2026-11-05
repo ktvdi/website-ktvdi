@@ -7,16 +7,34 @@ from typing import Any
 
 from firebase_admin import db
 
-from services.auth import hash_otp, hash_password, login, _send_otp
+from services.auth import (hash_otp, hash_password, login, _send_otp,
+                           create_persistent_session, restore_persistent_session,
+                           revoke_persistent_session)
 
 
 def _login_user(event: dict[str, Any], session: dict[str, Any]) -> dict[str, Any]:
     result = login(str(event.get("username", "")), str(event.get("password", "")))
     if result.get("ok"):
+        token = create_persistent_session(result["username"])
         session["auth"] = {
             key: result[key] for key in ("username", "nama", "points", "admin")
         }
+        session["_persistent_session_id"] = __import__("hashlib").sha256(
+            token.encode("utf-8")
+        ).hexdigest()
+        result["persistent_token"] = token
     return result
+
+
+def _restore_session(event: dict[str, Any], session: dict[str, Any]) -> dict[str, Any]:
+    restored = restore_persistent_session(str(event.get("token", "")))
+    if not restored:
+        session.pop("auth", None)
+        session.pop("_persistent_session_id", None)
+        return {"ok": False, "action": "restore_session", "clear_persistent_token": True}
+    session["auth"] = {key: restored[key] for key in ("username", "nama", "points", "admin")}
+    session["_persistent_session_id"] = restored["_session_id"]
+    return {"ok": True, "action": "restore_session", "auth": session["auth"]}
 
 
 def _request_registration(
@@ -157,8 +175,14 @@ def handle_auth_handler(
     }
 
     if action == "logout":
+        revoke_persistent_session(session.get("_persistent_session_id"))
         session.pop("auth", None)
-        return {"ok": True, "message": "Anda telah logout."}
+        session.pop("_persistent_session_id", None)
+        return {"ok": True, "action": "logout", "clear_persistent_token": True,
+                "message": "Anda telah logout."}
+
+    if action == "restore_session":
+        return _restore_session(event, session)
 
     handler = handlers.get(action)
     return handler() if handler else None

@@ -78,3 +78,63 @@ def _send_otp(secrets, email, otp, purpose):
     msg["Subject"]=subject; msg["From"]=sender; msg["To"]=email
     with smtplib.SMTP_SSL("smtp.gmail.com",465) as server:
         server.login(sender,password); server.sendmail(sender,email,msg.as_string())
+
+
+# Persistent browser sessions: only a SHA-256 digest of the opaque token is stored.
+# The raw token is returned once to the browser and is never written to Firebase.
+import secrets as _secrets
+from datetime import timezone as _timezone, timedelta as _timedelta
+
+SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
+
+
+def create_persistent_session(username: str) -> str:
+    """Create a revocable seven-day session and return its opaque browser token."""
+    token = _secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    now = int(datetime.now(_timezone.utc).timestamp())
+    db.reference(f"auth_sessions/{token_hash}").set({
+        "username": username,
+        "created_at": now,
+        "expires_at": now + SESSION_TTL_SECONDS,
+        "revoked": False,
+    })
+    return token
+
+
+def restore_persistent_session(token: str) -> dict[str, Any] | None:
+    """Validate a browser token and return current account data, or None."""
+    if not isinstance(token, str) or len(token) < 32 or len(token) > 256:
+        return None
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    ref = db.reference(f"auth_sessions/{token_hash}")
+    record = ref.get()
+    now = int(datetime.now(_timezone.utc).timestamp())
+    if not isinstance(record, dict) or record.get("revoked") is True:
+        return None
+    if not isinstance(record.get("expires_at"), (int, float)) or now >= record["expires_at"]:
+        ref.update({"revoked": True})
+        return None
+
+    username = str(record.get("username", "")).strip()
+    if not username:
+        ref.update({"revoked": True})
+        return None
+    user = db.reference(f"users/{username}").get()
+    if not isinstance(user, dict):
+        ref.update({"revoked": True})
+        return None
+
+    return {
+        "username": username,
+        "nama": user.get("nama", username),
+        "points": user.get("points", 0),
+        "admin": db.reference(f"admins/{username}").get() is True,
+        "_session_id": token_hash,
+    }
+
+
+def revoke_persistent_session(session_id: str | None) -> None:
+    """Revoke the current persistent session, if one is attached."""
+    if isinstance(session_id, str) and re.fullmatch(r"[a-f0-9]{64}", session_id):
+        db.reference(f"auth_sessions/{session_id}").update({"revoked": True})

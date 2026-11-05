@@ -1,5 +1,16 @@
 window.addEventListener('message', e => { const d = e.data; if (!d || d.type !== 'streamlit:render')
-    return; const a = d.args || {}; state.stats = a.stats || state.stats; state.rows = a.rows || state.rows; state.changes = a.changes || state.changes; state.provinces = a.provinces || state.provinces; state.mapLastUpdated = a.map_last_updated ?? state.mapLastUpdated; state.auth = a.auth || state.auth; state.result = a.result || null; if (state.result?.action === 'login' && state.result.ok) {
+    return; const a = d.args || {}; state.stats = a.stats || state.stats; state.rows = a.rows || state.rows; state.changes = a.changes || state.changes; state.provinces = a.provinces || state.provinces; state.mapLastUpdated = a.map_last_updated ?? state.mapLastUpdated; state.auth = a.auth || state.auth; state.result = a.result || null;
+    if (state.result?.action === 'login' && state.result.ok && state.result.persistent_token) {
+        try { window.localStorage.setItem('ktvdi_persistent_session', state.result.persistent_token); } catch (_) {}
+    }
+    if (state.result?.clear_persistent_token || state.result?.action === 'logout') {
+        try { window.localStorage.removeItem('ktvdi_persistent_session'); } catch (_) {}
+    }
+    if (state.result?.action === 'restore_session' && state.result.ok && state.result.auth) {
+        state.auth = state.result.auth;
+        state.page = 'beranda';
+    }
+    if (state.result?.action === 'login' && state.result.ok) {
     state.auth = { username: state.result.username, nama: state.result.nama, points: state.result.points, admin: state.result.admin };
     state.page = 'beranda';
 } if (state.result?.action === 'logout' && state.result.ok) {

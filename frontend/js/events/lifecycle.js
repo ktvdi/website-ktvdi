@@ -1,4 +1,11 @@
 window.parent.postMessage({ isStreamlitMessage: true, type: 'streamlit:componentReady', apiVersion: 1 }, '*');
+// Restore the user's opaque, revocable session token after a page reload.
+try {
+    const token = window.localStorage.getItem('ktvdi_persistent_session');
+    if (token) send('restore_session', { token });
+} catch (_) {
+    // Storage may be unavailable in restricted/private browsing contexts.
+}
 height();
 const ktvdiRoot = document.getElementById('app');
 if (ktvdiRoot && 'ResizeObserver' in window) {

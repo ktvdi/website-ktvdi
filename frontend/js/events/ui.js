@@ -1,1 +1,2 @@
-document.getElementById('menuToggle').addEventListener('click',()=>document.getElementById('nav').classList.toggle('open'));
+document.getElementById('menuToggle').addEventListener('click', () => document.getElementById('nav').classList.toggle('open'));
+

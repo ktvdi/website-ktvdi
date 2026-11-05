@@ -1,216 +1,36 @@
-"""Layanan backend KTVDI. Seluruh akses Firebase dan rahasia hanya di sisi Python."""
+"""Orkestrasi event frontend KTVDI dan facade kompatibilitas layanan.
+
+Fungsi layanan dipisahkan ke paket ``services`` berdasarkan tanggung jawab.
+Modul ini mempertahankan ``handle_event`` sebagai titik masuk yang dipakai app.py.
+"""
 from __future__ import annotations
-import hashlib
-import hmac
-import math, random, re, smtplib
+
+import math
+import random
+import re
 from datetime import datetime
-from email.mime.text import MIMEText
 from typing import Any
-from argon2 import PasswordHasher
-from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
-import firebase_admin
-from firebase_admin import credentials, db
+
+from firebase_admin import db
 from pytz import timezone
 
-DB_URL = "https://website-ktvdi-default-rtdb.firebaseio.com/"
-WIB = timezone("Asia/Jakarta")
-REPORT_STATUSES = ["Menunggu", "Sedang ditinjau", "Selesai", "Ditolak"]
-
-
-def now_wib(fmt="%Y-%m-%d %H:%M:%S WIB"):
-    return datetime.now(WIB).strftime(fmt)
-
-
-def initialize_firebase(secrets) -> None:
-    if not firebase_admin._apps:
-        cred = credentials.Certificate(dict(secrets["FIREBASE"]))
-        firebase_admin.initialize_app(cred, {"databaseURL": DB_URL})
-
-
-# Argon2id untuk password akun. Parameter awal ini perlu diuji pada hosting produksi.
-_PASSWORD_HASHER = PasswordHasher(
-    time_cost=2,
-    memory_cost=19_456,  # KiB (19 MiB)
-    parallelism=1,
+from services.core import (
+    DB_URL, WIB, now_wib, initialize_firebase, _safe_key, _audit,
+    _require_auth, _require_admin,
+)
+from services.auth import (
+    _PASSWORD_HASHER, hash_password, hash_otp,
+    verify_password_and_migrate, login, _send_otp,
+)
+from services.broadcasts import (
+    get_all_broadcast_rows, get_latest_transmitter_update_timestamp,
+    get_stats, search_broadcasts, get_recent_changes,
+)
+from services.community import (
+    _public_user, _all_reports, _all_users_public, _profile, _comments,
 )
 
-
-def hash_password(password: str) -> str:
-    """Hash password baru menggunakan Argon2id."""
-    return _PASSWORD_HASHER.hash(password)
-
-
-def hash_otp(otp: str) -> str:
-    """Hash OTP sementara; OTP bukan password dan hanya berlaku singkat."""
-    return hashlib.sha256(otp.encode("utf-8")).hexdigest()
-
-
-def verify_password_and_migrate(password: str, stored_hash: str) -> tuple[bool, str | None]:
-    """Verifikasi Argon2id atau SHA-256 lama; kembalikan hash baru bila perlu."""
-    if not isinstance(stored_hash, str) or not stored_hash:
-        return False, None
-
-    # Hash SHA-256 lama memiliki 64 karakter heksadesimal.
-    if re.fullmatch(r"[a-fA-F0-9]{64}", stored_hash):
-        legacy_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
-        if hmac.compare_digest(legacy_hash.lower(), stored_hash.lower()):
-            return True, hash_password(password)
-        return False, None
-
-    try:
-        valid = _PASSWORD_HASHER.verify(stored_hash, password)
-    except (VerifyMismatchError, VerificationError, InvalidHashError):
-        return False, None
-
-    replacement = hash_password(password) if _PASSWORD_HASHER.check_needs_rehash(stored_hash) else None
-    return bool(valid), replacement
-
-
-def _safe_key(value: str, label: str) -> str:
-    value = str(value or "").strip()
-    if not value or any(c in value for c in ".#$[]/"):
-        raise ValueError(f"{label} tidak valid.")
-    return value
-
-
-def get_all_broadcast_rows() -> list[dict[str, Any]]:
-    data = db.reference("siaran").get() or {}
-    rows = []
-    for prov, areas in data.items():
-        for wilayah, muxes in (areas or {}).items():
-            for mux, details in (muxes or {}).items():
-                details = {"siaran": details} if isinstance(details, list) else (details or {})
-                rows.append({"provinsi": str(prov), "wilayah": str(wilayah), "mux": str(mux),
-                    "siaran": details.get("siaran", []) or [], "detail": details,
-                    "latitude": details.get("latitude"), "longitude": details.get("longitude")})
-    return rows
-
-
-
-def get_latest_transmitter_update_timestamp() -> str | None:
-    """Waktu perubahan terakhir pada titik pemancar atau informasi pemancarnya."""
-    logs = db.reference("audit_logs").get() or {}
-    relevant = {
-        "add_broadcast", "edit_broadcast", "delete_broadcast", "restore_broadcast",
-        "add_coordinates", "update_coordinates", "delete_coordinates",
-        "update_transmitter_technical_data",
-    }
-    timestamps = [
-        str(item.get("timestamp", "")).strip()
-        for item in logs.values()
-        if isinstance(item, dict)
-        and item.get("action") in relevant
-        and item.get("timestamp")
-    ]
-    if not timestamps:
-        return None
-    latest = max(timestamps)
-    try:
-        return datetime.strptime(latest[:19], "%Y-%m-%d %H:%M:%S").strftime("%d-%m-%Y %H:%M")
-    except ValueError:
-        return latest[:16]
-
-def get_stats() -> dict[str, int]:
-    rows = get_all_broadcast_rows()
-    return {"provinsi": len({r['provinsi'] for r in rows}),
-            "wilayah": len({(r['provinsi'], r['wilayah']) for r in rows}),
-            "mux": len(rows),
-            "kanal": len({str(c).strip().casefold() for r in rows for c in r['siaran'] if str(c).strip()})}
-
-
-def search_broadcasts(query: str) -> list[dict[str, Any]]:
-    q = query.strip().casefold()
-    if not q: return []
-    out=[]
-    for row in get_all_broadcast_rows():
-        hay = " ".join([row['provinsi'],row['wilayah'],row['mux']," ".join(map(str,row['siaran']))]).casefold()
-        if q in hay: out.append(row)
-    return out
-
-
-def get_recent_changes(limit=50):
-    logs=db.reference("audit_logs").get() or {}
-    allowed={"add_broadcast","edit_broadcast","delete_broadcast","restore_broadcast",
-             "approve_broadcast_edit_request","reject_broadcast_edit_request"}
-    values=[v for v in logs.values() if isinstance(v,dict) and v.get("action") in allowed]
-    values.sort(key=lambda x:x.get("timestamp",""),reverse=True)
-    return values[:limit]
-
-
-def _audit(action, prov, wilayah, mux, username, before=None, after=None):
-    user=db.reference(f"users/{username}").get() or {}
-    db.reference("audit_logs").push().set({"action":action,"provinsi":prov,"wilayah":wilayah,"mux":mux,
-        "username":username,"nama":user.get("nama",username),"timestamp":now_wib(),"before":before,"after":after})
-
-
-def _require_auth(session):
-    auth=session.get("auth")
-    if not auth or not auth.get("username"): raise PermissionError("Silakan login terlebih dahulu.")
-    return auth["username"]
-
-
-def _require_admin(session):
-    username=_require_auth(session)
-    if db.reference(f"admins/{username}").get() is not True: raise PermissionError("Akses khusus admin.")
-    return username
-
-
-def login(username: str, password: str) -> dict[str, Any]:
-    username = username.strip()
-    users = db.reference("users").get() or {}
-    user = users.get(username)
-    if not username or not password or not isinstance(user, dict):
-        return {"ok": False, "message": "Username atau password salah."}
-
-    valid, replacement_hash = verify_password_and_migrate(
-        password, user.get("password", "")
-    )
-    if not valid:
-        return {"ok": False, "message": "Username atau password salah."}
-
-    # Migrasi hash lama atau pembaruan parameter Argon2id dilakukan setelah
-    # password terbukti benar. Password asli tidak pernah disimpan.
-    if replacement_hash:
-        db.reference(f"users/{username}").update({"password": replacement_hash})
-
-    return {"ok": True, "username": username, "nama": user.get("nama", username),
-            "points": user.get("points", 0),
-            "admin": db.reference(f"admins/{username}").get() is True}
-
-
-def _send_otp(secrets, email, otp, purpose):
-    sender=secrets["email"]["sender"]; password=secrets["email"]["app_password"]
-    subject="Kode OTP Pendaftaran KTVDI" if purpose=="register" else "Kode OTP Reset Password KTVDI"
-    msg=MIMEText(f"Kode OTP KTVDI Anda: {otp}. Jangan bagikan kode ini kepada siapa pun.")
-    msg["Subject"]=subject; msg["From"]=sender; msg["To"]=email
-    with smtplib.SMTP_SSL("smtp.gmail.com",465) as server:
-        server.login(sender,password); server.sendmail(sender,email,msg.as_string())
-
-
-def _public_user(username, user):
-    return {"username":username,"nama":user.get("nama",username),"points":user.get("points",0),
-        **{k:user.get(k,"") for k in ("provinsi","wilayah","tv_brand","stb_brand","antenna_brand")}}
-
-
-def _all_reports():
-    data=db.reference("broadcast_reports").get() or {}
-    return [{"id":k,**v} for k,v in data.items() if isinstance(v,dict)]
-
-
-def _all_users_public():
-    users=db.reference("users").get() or {}
-    return [_public_user(k,v) for k,v in users.items() if isinstance(v,dict)]
-
-
-def _profile(username):
-    data=db.reference(f"users/{username}").get() or {}
-    return _public_user(username,data)
-
-
-def _comments(prov, area, mux):
-    data=db.reference(f"siaran/{prov}/{area}/{mux}/comments").get() or {}
-    return [{"id":k,**v} for k,v in sorted(data.items(),key=lambda kv:kv[1].get("timestamp",""),reverse=True) if isinstance(v,dict)]
-
+REPORT_STATUSES = ["Menunggu", "Sedang ditinjau", "Selesai", "Ditolak"]
 
 def handle_event(event: dict[str, Any], session: dict[str, Any], secrets=None) -> dict[str, Any]:
     """Aksi dari frontend. Otorisasi dan validasi selalu dilakukan ulang di server."""

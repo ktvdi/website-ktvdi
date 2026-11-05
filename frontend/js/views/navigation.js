@@ -8,26 +8,6 @@ function nav() {
             else el.removeAttribute('aria-current');
         }
     });
-
-    // Build account details with DOM nodes: account names must never be parsed as HTML.
-    const account = document.getElementById('account');
-    account.replaceChildren();
-    if (state.auth) {
-        const userIcon = document.createElement('i');
-        userIcon.dataset.lucide = 'user-round';
-        userIcon.setAttribute('aria-hidden', 'true');
-        const userName = document.createElement('span');
-        userName.textContent = state.auth.nama || state.auth.username || 'Pengguna';
-        const separator = document.createElement('span');
-        separator.textContent = '·';
-        separator.setAttribute('aria-hidden', 'true');
-        const pointsIcon = document.createElement('i');
-        pointsIcon.dataset.lucide = 'star';
-        pointsIcon.setAttribute('aria-hidden', 'true');
-        const points = document.createElement('span');
-        points.textContent = `${Number(state.auth.points) || 0} poin`;
-        account.append(userIcon, userName, separator, pointsIcon, points);
-    }
     const loginButton = document.getElementById('loginNav');
     loginButton.textContent = state.auth ? 'Keluar' : 'Login';
     loginButton.classList.toggle('logout-nav', !!state.auth);

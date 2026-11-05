@@ -16,7 +16,11 @@
     './js/maps.js',
     './js/events.js'
   ];
+
+  // main.js is an external script, so the closing script tag must be literal.
+  // document.write keeps these classic scripts parser-ordered and preserves
+  // the shared global-function architecture used by the existing frontend.
   scripts.forEach(function (src) {
-    document.write('<script src="' + src + '"><\\/script>');
+    document.write('<script src="' + src + '"></script>');
   });
 })();

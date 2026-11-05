@@ -192,3 +192,10 @@ tr:hover td { background: #f8fcfe; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+
+/* FIX HEADER: sembunyikan wadah akun kosong agar tidak menjadi kapsul
+   transparan yang menimpa logo ketika pengguna belum login. */
+.topbar #account:empty {
+  display: none !important;
+}

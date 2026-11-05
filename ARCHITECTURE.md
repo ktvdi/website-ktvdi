@@ -33,3 +33,35 @@ Seluruh berkas Python diperiksa menggunakan parser/kompilasi sintaks Python. Pen
 ## Langkah lanjutan
 
 `handle_event()` masih menjadi orkestrator event agar perubahan ini tidak mengubah perilaku aplikasi secara luas. Tahap refactoring berikutnya dapat memindahkan kelompok aksi (autentikasi, siaran, komunitas, laporan, koordinat, dan administrasi) ke modul handler masing-masing, disertai unit test untuk tiap aksi.
+
+
+## Pemisahan handler event (tahap 2)
+
+Aksi dari frontend kini didelegasikan dari `backend.handle_event()` ke handler berdasarkan fitur:
+
+```text
+handlers/
+├── __init__.py
+├── auth_handler.py
+├── broadcast_handler.py
+├── coordinate_handler.py
+├── measurement_handler.py
+├── community_handler.py
+└── report_admin_handler.py
+```
+
+- `auth_handler.py`: login, logout, registrasi, verifikasi OTP, dan reset password.
+- `broadcast_handler.py`: permintaan perubahan data siaran, tambah/edit/hapus siaran, dan data teknis.
+- `coordinate_handler.py`: permintaan perubahan titik, persetujuan, penyimpanan, dan penghapusan koordinat.
+- `measurement_handler.py`: pengiriman/pemuatan pengukuran, detail, dan kalkulasi terrain.
+- `community_handler.py`: profil, komentar, komunitas, dan chatbot.
+- `report_admin_handler.py`: laporan koreksi dan operasi administrasi.
+
+`backend.handle_event()` tetap menjadi satu pintu masuk dan mempertahankan format event/response yang digunakan frontend. Validasi dan pemeriksaan otorisasi yang sebelumnya berada di setiap aksi dipertahankan dalam handler terkait.
+
+## Status pengujian tahap 2
+
+- Pemeriksaan sintaks Python berhasil untuk seluruh 16 file Python.
+- Seluruh aksi fitur yang dipindahkan memiliki handler.
+- Belum dilakukan uji runtime, Firebase, email SMTP, Gemini, atau simulasi terrain karena dependensi dan kredensial layanan eksternal tidak tersedia di lingkungan pemeriksaan.
+- Sebelum deployment, jalankan smoke test untuk login, registrasi/OTP, operasi data siaran, koordinat, pengukuran, laporan, serta akses admin.

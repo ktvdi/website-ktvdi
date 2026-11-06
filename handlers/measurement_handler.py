@@ -100,5 +100,51 @@ def handle_measurement_handler(action: str, event: dict[str, Any], session: dict
                 raw=db.reference(f"signal_measurements/{prov}/{area}/{mux}").get() or {}
                 measurements=[{"id":k,"provinsi":prov,"wilayah":area,"mux":mux,**v} for k,v in raw.items() if isinstance(v,dict)]
                 measurements.sort(key=lambda x:x.get("timestamp",""),reverse=True)
-                return {"ok":True,"comments":_comments(prov,area,mux),"detail":(db.reference(f"siaran/{prov}/{area}/{mux}").get() or {}),"measurements":measurements[:500]}
+                comments=_comments(prov,area,mux)
+                detail=db.reference(f"siaran/{prov}/{area}/{mux}").get() or {}
+
+                # Authenticated clients retain the complete detail payload for
+                # owner/admin workflows. Anonymous clients receive an explicit
+                # allow-list; never serialize Firebase records wholesale.
+                authenticated=bool(session and session.get("username"))
+                if not authenticated:
+                    public_detail_keys={
+                        "siaran","tx_height_m","tx_power_w","erp_w",
+                        "antenna_gain_dbd","feeder_loss_db",
+                        "last_updated_date","last_updated_time",
+                    }
+                    detail={k:detail[k] for k in public_detail_keys if k in detail}
+
+                    public_measurements=[]
+                    for item in measurements[:500]:
+                        public_item={
+                            k:item[k] for k in (
+                                "id","provinsi","wilayah","mux","display_name",
+                                "strength","quality","snr","ber","device_type",
+                                "antenna_type","timestamp",
+                            ) if k in item
+                        }
+                        # Public map locations are approximate (about 1 km),
+                        # and free-text notes/account identifiers are not exposed.
+                        for coordinate in ("latitude","longitude"):
+                            value=item.get(coordinate)
+                            try:
+                                number=float(value)
+                                if math.isfinite(number):
+                                    public_item[coordinate]=round(number,2)
+                            except (TypeError,ValueError):
+                                pass
+                        public_measurements.append(public_item)
+
+                    public_comments=[]
+                    for item in comments:
+                        public_item={k:item[k] for k in ("id","nama_pengguna","text","timestamp") if k in item}
+                        # Some legacy comments only have a display_name field.
+                        if "nama_pengguna" not in public_item and item.get("display_name"):
+                            public_item["nama_pengguna"]=item["display_name"]
+                        public_comments.append(public_item)
+                    measurements=public_measurements
+                    comments=public_comments
+
+                return {"ok":True,"comments":comments,"detail":detail,"measurements":measurements[:500]}
     return None

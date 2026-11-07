@@ -3,6 +3,7 @@ from pathlib import Path
 import streamlit as st
 import streamlit.components.v1 as components
 from backend import initialize_firebase, handle_event, get_stats, get_all_broadcast_rows, get_recent_changes
+from services.map_serializers import has_map_private_access, serialize_transmitter_row
 try:
     from backend import get_latest_transmitter_update_timestamp
 except ImportError:
@@ -29,7 +30,8 @@ for key, default in (("ktvdi_session",{}),("ktvdi_result",None),("ktvdi_event_id
 
 try:
     initialize_firebase(st.secrets)
-    rows=get_all_broadcast_rows()
+    authenticated=has_map_private_access(st.session_state.ktvdi_session)
+    rows=[serialize_transmitter_row(row,authenticated) for row in get_all_broadcast_rows()]
     provinces=st.secrets.get("PUBLIC_PROVINCES") if "PUBLIC_PROVINCES" in st.secrets else None
     if not provinces:
         try:

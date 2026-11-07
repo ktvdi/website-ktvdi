@@ -55,10 +55,13 @@ def handle_event(event: dict[str, Any], session: dict[str, Any], secrets=None) -
             result = handler(action, event, session, secrets)
             if result is not None:
                 return result
+        authenticated = has_map_private_access(session)
         if action == "search":
-            return {"ok": True, "results": search_broadcasts(str(event.get("query", "")))}
+            results = search_broadcasts(str(event.get("query", "")))
+            return {"ok": True, "results": [serialize_transmitter_row(row, authenticated) for row in results]}
         if action in ("refresh", None):
-            return {"ok": True, "stats": get_stats(), "rows": get_all_broadcast_rows(), "changes": get_recent_changes()}
+            rows = [serialize_transmitter_row(row, authenticated) for row in get_all_broadcast_rows()]
+            return {"ok": True, "stats": get_stats(), "rows": rows, "changes": get_recent_changes()}
         return {"ok": False, "message": "Aksi tidak dikenal."}
     except Exception as exc:
         return {"ok": False, "message": str(exc) if isinstance(exc, (ValueError, PermissionError, RuntimeError)) else "Terjadi kesalahan layanan. Periksa konfigurasi dan log server."}

@@ -15,6 +15,7 @@ from services.core import now_wib, _safe_key, _audit, _require_auth, _require_ad
 from services.auth import hash_password, hash_otp, login, _send_otp
 from services.broadcasts import get_all_broadcast_rows, get_stats, search_broadcasts, get_recent_changes
 from services.community import _public_user, _all_reports, _all_users_public, _profile, _comments
+from services.map_serializers import (has_map_private_access, serialize_map_measurement, serialize_map_detail, serialize_map_response)
 
 REPORT_STATUSES = ["Menunggu", "Sedang ditinjau", "Selesai", "Ditolak"]
 
@@ -87,9 +88,8 @@ def handle_measurement_handler(action: str, event: dict[str, Any], session: dict
                 layer_data["image_data_uri"]="data:image/png;base64,"+base64.b64encode(buf.getvalue()).decode("ascii")
                 return {"ok":True,"terrain":layer_data,"message":"Prediksi terrain selesai. Hasil bersifat indikatif, bukan jaminan penerimaan sinyal."}
     if action=="load_measurements":
+                authenticated=has_map_private_access(session)
                 raw=db.reference("signal_measurements").get() or {}; records=[]
-                authenticated=bool(session and session.get("username"))
-                public_fields=("provinsi","wilayah","mux","strength","quality","snr","ber","timestamp")
                 for p,areas in raw.items():
                     for a,muxes in (areas or {}).items():
                         for m,items in (muxes or {}).items():
@@ -97,49 +97,22 @@ def handle_measurement_handler(action: str, event: dict[str, Any], session: dict
                                 if not isinstance(item,dict):
                                     continue
                                 record={"id":mid,"provinsi":p,"wilayah":a,"mux":m,**item}
-                                if authenticated:
-                                    records.append(record)
-                                    continue
-                                public_record={k:record[k] for k in public_fields if k in record}
-                                # Coordinate privacy is enforced here, before the response
-                                # reaches the browser; frontend masking is not a security boundary.
-                                for coordinate in ("latitude","longitude"):
-                                    try:
-                                        value=float(record.get(coordinate))
-                                        if math.isfinite(value):
-                                            public_record[coordinate]=round(value,2)
-                                    except (TypeError,ValueError):
-                                        pass
-                                records.append(public_record)
+                                records.append(serialize_map_measurement(record,authenticated))
                 records.sort(key=lambda x:x.get("timestamp",""),reverse=True)
                 limit=500 if authenticated else 100
-                return {"ok":True,"measurements":records[:limit]}
+                return serialize_map_response(action,{"measurements":records[:limit]},authenticated)
     if action=="load_details":
                 prov=_safe_key(event.get("provinsi"),"Provinsi"); area=_safe_key(event.get("wilayah"),"Wilayah"); mux=_safe_key(event.get("mux"),"MUX")
+                authenticated=has_map_private_access(session)
                 raw=db.reference(f"signal_measurements/{prov}/{area}/{mux}").get() or {}
-                authenticated=bool(session and session.get("username"))
                 measurements=[]
-                public_fields=("id","provinsi","wilayah","mux","display_name","strength","quality","snr","ber","device_type","antenna_type","timestamp")
                 for key,value in raw.items():
-                    if not isinstance(value,dict):
-                        continue
-                    record={"id":key,"provinsi":prov,"wilayah":area,"mux":mux,**value}
-                    if authenticated:
-                        measurements.append(record)
-                        continue
-                    public_record={k:record[k] for k in public_fields if k in record}
-                    # Round at the API boundary; never expose source precision to anonymous clients.
-                    for coordinate in ("latitude","longitude"):
-                        try:
-                            number=float(record.get(coordinate))
-                            if math.isfinite(number):
-                                public_record[coordinate]=round(number,2)
-                        except (TypeError,ValueError):
-                            pass
-                    measurements.append(public_record)
+                    if isinstance(value,dict):
+                        record={"id":key,"provinsi":prov,"wilayah":area,"mux":mux,**value}
+                        measurements.append(serialize_map_measurement(record,authenticated))
                 measurements.sort(key=lambda x:x.get("timestamp",""),reverse=True)
-                detail=db.reference(f"siaran/{prov}/{area}/{mux}").get() or {}
-                if not authenticated and isinstance(detail,dict):
-                    detail={k:detail[k] for k in ("siaran","tx_height_m","tx_power_w","erp_w","antenna_gain_dbd","feeder_loss_db","last_updated_date","last_updated_time") if k in detail}
-                return {"ok":True,"comments":_comments(prov,area,mux),"detail":detail,"measurements":measurements[:500]}
+                comments=_comments(prov,area,mux)
+                detail=serialize_map_detail(db.reference(f"siaran/{prov}/{area}/{mux}").get() or {},authenticated)
+                payload={"comments":comments,"detail":detail,"measurements":measurements[:500]}
+                return serialize_map_response(action,payload,authenticated)
     return None

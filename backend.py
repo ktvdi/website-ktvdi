@@ -26,6 +26,7 @@ from services.broadcasts import (
     get_all_broadcast_rows, get_latest_transmitter_update_timestamp,
     get_stats, search_broadcasts, get_recent_changes,
 )
+from services.map_serializers import has_map_private_access, serialize_transmitter_row
 from services.community import (
     _public_user, _all_reports, _all_users_public, _profile, _comments,
 )
@@ -36,6 +37,27 @@ def handle_event(event: dict[str, Any], session: dict[str, Any], secrets=None) -
     """Dispatch event frontend ke handler fitur dengan otorisasi di sisi server."""
     action = event.get("action")
     try:
+        # Kebijakan akses terpusat untuk seluruh endpoint Peta Pemancar.
+        # Hanya endpoint baca yang tercantum eksplisit di sini yang boleh anonim.
+        map_public_reads = {
+            "load_measurements", "load_details", "calculate_terrain",
+            "search", "refresh",
+        }
+        map_authenticated = {
+            "submit_measurement",
+            "load_point_requests", "submit_point_change_request",
+            "approve_point_change_request", "reject_point_change_request",
+            "save_coordinates", "delete_coordinates",
+            "load_broadcast_edit_requests", "submit_broadcast_edit_request",
+            "approve_broadcast_edit_request", "reject_broadcast_edit_request",
+            "add_broadcast", "edit_broadcast", "delete_broadcast",
+        }
+        admin_only = {"save_technical", "load_admin", "admin_report_update", "admin_restore"}
+
+        if action in map_authenticated:
+            _require_auth(session)
+        if action in admin_only:
+            _require_admin(session)
         from handlers.auth_handler import handle_auth_handler
         from handlers.broadcast_handler import handle_broadcast_handler
         from handlers.coordinate_handler import handle_coordinate_handler

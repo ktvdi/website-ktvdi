@@ -45,9 +45,15 @@ def handle_measurement_handler(action: str, event: dict[str, Any], session: dict
                 prov=_safe_key(event.get("provinsi"),"Provinsi"); area=_safe_key(event.get("wilayah"),"Wilayah"); mux=_safe_key(event.get("mux"),"MUX")
                 rows=[r for r in get_all_broadcast_rows() if r["provinsi"]==prov and r["wilayah"]==area and r["mux"]==mux]
                 if not rows: raise ValueError("Data pemancar tidak ditemukan.")
-                row=rows[0]
+                row=dict(rows[0])
                 try: lat=float(row.get("latitude")); lon=float(row.get("longitude"))
                 except (TypeError,ValueError): raise ValueError("Pemancar belum memiliki koordinat valid.")
+                # Overlay terrain memiliki bounds geografis. Untuk pengunjung anonim,
+                # hitung dari koordinat publik yang dibulatkan agar bounds raster tidak
+                # membocorkan koordinat presisi yang sengaja disembunyikan di peta.
+                if not has_map_private_access(session):
+                    lat=round(lat, 2); lon=round(lon, 2)
+                    row["latitude"], row["longitude"] = lat, lon
                 from terrain import _terrain_dem_coverage, _uhf_frequency_mhz
                 if not _uhf_frequency_mhz(mux): raise ValueError("Prediksi terrain memerlukan kanal UHF 21–48.")
                 # Tanpa parameter simulasi, gunakan data teknis pemancar yang tersimpan.

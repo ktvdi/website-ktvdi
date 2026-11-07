@@ -36,6 +36,10 @@ if (!window.__ktvdiRestoreRequested) {
     state.terrain = null;
 } let showDetail = false, message = ''; if (state.result) {
     const r = state.result;
+    // API payloads use distinct public/authenticated envelopes. Normalize only
+    // for the existing view layer; filtering already happened on the server.
+    const rolePayload = r.public_data || r.authenticated_data;
+    if (rolePayload && typeof rolePayload === 'object') Object.assign(r, rolePayload);
     if (r.stats)
         state.stats = r.stats;
     if (r.comments) {

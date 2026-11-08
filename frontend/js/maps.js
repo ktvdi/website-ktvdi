@@ -23,9 +23,7 @@ function drawMapLayers() {
     if (state.mapDrawToken) state.mapDrawToken++;
     const drawToken = state.mapDrawToken = (state.mapDrawToken || 0) + 1;
     if (state.mapTransmitters) map.removeLayer(state.mapTransmitters);
-    if (state.mapMeasurements) map.removeLayer(state.mapMeasurements);
     state.mapTransmitters = L.layerGroup().addTo(map);
-    state.mapMeasurements = L.layerGroup().addTo(map);
     state.mapMarkerIndex = {};
     const rows = mapFilteredRows();
     const addMarkerBatch = (start) => {
@@ -36,25 +34,9 @@ function drawMapLayers() {
             const key = [r.provinsi, r.wilayah, r.mux].join('|');
             const selected = state.selected && key === [state.selected.provinsi, state.selected.wilayah, state.selected.mux].join('|');
             const channels = (r.siaran || []).length ? (r.siaran || []).map(x => `<li>${esc(x)}</li>`).join('') : '<li>Belum ada data kanal</li>';
-            const popup = `<div class="transmitter-popup"><div class="popup-kicker">INFORMASI PEMANCAR</div><b>Wilayah Layanan</b><div>${esc(r.wilayah || '—')}, ${esc(r.provinsi || '—')}</div><b>Nama MUX</b><div>${esc(r.mux || '—')}</div><b>Daftar Kanal</b><ul>${channels}</ul>${selected && state.terrain ? `<div class="popup-terrain">Coverage tersedia · ${esc(state.terrain.min_dbm ?? '—')} hingga ${esc(state.terrain.max_dbm ?? '—')} dBm</div>` : ''}<button type="button" class="action popup-coverage-button" data-coverage="${attr(key)}">Lihat Coverage</button></div>`;
+            const popup = `<div class="transmitter-popup"><div class="popup-kicker">INFORMASI PEMANCAR</div><b>Wilayah Layanan</b><div>${esc(r.wilayah || '—')}, ${esc(r.provinsi || '—')}</div><b>Nama MUX</b><div>${esc(r.mux || '—')}</div><b>Daftar Kanal</b><ul>${channels}</ul></div>`;
             const marker = L.marker([mapViewerCoordinate(r.latitude), mapViewerCoordinate(r.longitude)], { title: rowTitle(r), alt: rowTitle(r), keyboard: true });
             marker.bindPopup(popup, { maxWidth: 1200 });
-            // Leaflet disables click propagation inside popup content. Attach the
-            // action directly after the popup DOM has been created.
-            marker.on('popupopen', (event) => {
-                const button = event.popup.getElement()?.querySelector('[data-coverage]');
-                if (!button || button.dataset.listenerAttached === '1') return;
-                button.dataset.listenerAttached = '1';
-                button.addEventListener('click', (clickEvent) => {
-                    clickEvent.preventDefault();
-                    clickEvent.stopPropagation();
-                    if (typeof window.ktvdiRunCoverage === 'function') {
-                        window.ktvdiRunCoverage(button.dataset.coverage, button);
-                    } else {
-                        notice('Fungsi Coverage belum siap. Muat ulang halaman.');
-                    }
-                });
-            });
             marker.on('click', () => window.ktvdiSelect(key, false));
             if (selected) marker.setZIndexOffset(1000);
             marker.addTo(state.mapTransmitters);
@@ -63,20 +45,6 @@ function drawMapLayers() {
         if (end < rows.length) requestAnimationFrame(() => addMarkerBatch(end));
         else addMeasurementBatch(0);
     };
-    const measurements = (state.measurements || []).filter(x => (!state.mapProvince || x.provinsi === state.mapProvince) && (!state.mapArea || x.wilayah === state.mapArea) && (!state.selected || (x.provinsi === state.selected.provinsi && x.wilayah === state.selected.wilayah && x.mux === state.selected.mux)));
-    const addMeasurementBatch = (start) => {
-        if (drawToken !== state.mapDrawToken || !state.map) return;
-        const end = Math.min(start + 100, measurements.length);
-        for (let i = start; i < end; i++) {
-            const x = measurements[i], lat = Number(x.latitude), lon = Number(x.longitude);
-            if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-            const q = Number(x.quality), color = q >= 70 ? '#16a34a' : q >= 40 ? '#eab308' : '#dc2626';
-            L.circleMarker([mapViewerCoordinate(lat), mapViewerCoordinate(lon)], { radius: 7, color, fillColor: color, fillOpacity: .75, weight: 2 }).bindPopup(`<b>Pengukuran komunitas</b><br>${esc(mapViewerIdentity(x))}<br>Strength ${esc(x.strength)}% · Quality ${esc(x.quality)}%<br>SNR ${esc(x.snr ?? '—')} dB · BER ${esc(x.ber ?? '—')}<br>${esc(x.timestamp)}`).addTo(state.mapMeasurements);
-        }
-        if (end < measurements.length) requestAnimationFrame(() => addMeasurementBatch(end));
-    };
-    const count = document.getElementById('mapCount');
-    if (count) count.textContent = `${rows.length} titik pemancar ditampilkan · ${state.selected ? '1 pemancar dipilih' : 'pilih marker atau MUX'}`;
     addMarkerBatch(0);
 }
 

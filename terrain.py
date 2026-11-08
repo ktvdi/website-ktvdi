@@ -330,6 +330,7 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         west_ll, south_ll = from_utm.transform(xmin, tx_y-radius_m)
         east_ll, north_ll = from_utm.transform(tx_x+radius_m, ymax)
         outputs.append({
+            "coverage_engine": "legacy-dem-mapzen-knife-edge-no-cache-v1",
             "name": f"{tx.get('mux','MUX')} — {tx.get('wilayah','')}",
             "image": rgba, "bounds": [[south_ll, west_ll], [north_ll, east_ll]],
             "min_dbm": float(np.nanpercentile(rx_dbm, 5)) if np.any(predicted_pixels) else None,

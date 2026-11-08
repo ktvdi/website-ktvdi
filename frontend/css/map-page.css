@@ -84,3 +84,7 @@
 .map-location-control:hover{background:#f1f6fc;border-color:#9db9df}
 .map-location-control:disabled{opacity:.65;cursor:wait}
 .map-location-control svg{width:19px;height:19px}
+
+.transmitter-popup .popup-actions{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}
+.transmitter-popup .popup-actions .small-action{flex:1;min-width:110px;margin:0;white-space:nowrap}
+.transmitter-popup .small-action.is-loading{opacity:.7;cursor:wait}

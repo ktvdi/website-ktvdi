@@ -68,3 +68,11 @@
 .map-terrain-legend span{display:flex;align-items:center;gap:7px;white-space:nowrap}
 .map-terrain-legend i{width:10px;height:10px;border-radius:3px;display:inline-block;flex:none}
 .map-terrain-legend i.weak{background:#eb2323}.map-terrain-legend i.medium{background:#ffdc00}.map-terrain-legend i.strong{background:#14b441}.map-terrain-legend i.very-strong{background:#1969eb}
+
+.technical-summary{margin:1rem 0;padding:1rem;border:1px solid var(--border-color,#e5e7eb);border-radius:12px;background:#fff}
+.technical-summary h3{margin:0 0 .75rem}
+.technical-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.75rem}
+.technical-grid>div{display:flex;flex-direction:column;gap:.2rem;padding:.65rem;border-radius:8px;background:#f8fafc}
+.technical-grid span{font-size:.8rem;color:#64748b}
+.technical-grid b{overflow-wrap:anywhere}
+.transmitter-popup [data-show-technical]{margin-top:.75rem;width:100%}

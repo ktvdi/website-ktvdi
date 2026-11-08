@@ -46,9 +46,9 @@ window.ktvdiUpdateTerrain = function () {
     const resetCoverageButtons = () => {
         window.ktvdiHideCoverageLoading();
         document.querySelectorAll('[data-coverage]').forEach(button => {
-        button.disabled = false;
-        button.textContent = 'Lihat Coverage';
-        button.classList.remove('is-loading');
+            button.disabled = false;
+            button.textContent = 'Lihat Coverage';
+            button.classList.remove('is-loading');
         });
     };
     const terrain = state.terrain;

@@ -1,7 +1,7 @@
 /* KTVDI frontend core: shared state, Streamlit bridge, and common helpers. */
 'use strict';
 'use strict';
-var state = { page: 'beranda', stats: {}, rows: [], changes: [], auth: null, result: null, provinces: [], selected: null, comments: [], users: [], reports: [], logs: [], profile: null, map: null, terrain: null, terrainAuto: true, terrainRequestedKey: null, measurements: [], chat: [], mapProvince: '', mapArea: '', mapMuxSelection: '', mapUserMarker: null, mapCoordinate: null, mapMarkerIndex: {}, pointSelected: null, pointMap: null, mapLastUpdated: null, pointRequests: [], databaseProvince: '', databaseArea: '', databaseMux: '', databaseQuery: '', broadcastEditRequests: [], databaseRequestTarget: null };
+var state = { page: 'beranda', stats: {}, rows: [], changes: [], auth: null, result: null, provinces: [], selected: null, comments: [], users: [], reports: [], logs: [], profile: null, map: null, terrain: null, terrainAuto: true, terrainRequestedKey: null, measurements: [], chat: [], mapProvince: '', mapArea: '', mapMuxSelection: '', mapSearch: '', mapUserMarker: null, mapCoordinate: null, mapMarkerIndex: {}, pointSelected: null, pointMap: null, mapLastUpdated: null, pointRequests: [], databaseProvince: '', databaseArea: '', databaseMux: '', databaseQuery: '', broadcastEditRequests: [], databaseRequestTarget: null };
 var app = document.getElementById('main');
 var esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 var attr = s => esc(s).replace(/`/g, '&#96;');

@@ -250,37 +250,3 @@ tr:hover td { background: #f8fcfe; }
 .popup-coverage-button.is-loading { opacity: .72; cursor: progress; }
 .popup-coverage-button:disabled { pointer-events: none; }
 .leaflet-overlay-pane img.leaflet-image-layer { will-change: opacity; }
-
-
-/* Loading overlay saat perhitungan dan pemuatan raster coverage. */
-#map { position: relative; }
-.map-coverage-loading {
-  position: absolute;
-  z-index: 1200;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 13px 17px;
-  border: 1px solid rgba(148, 163, 184, .35);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, .96);
-  color: #1e293b;
-  box-shadow: 0 8px 28px rgba(15, 23, 42, .18);
-  font-size: 13px;
-  font-weight: 600;
-  pointer-events: none;
-}
-.map-coverage-loading[hidden] { display: none; }
-.map-coverage-spinner {
-  width: 21px;
-  height: 21px;
-  flex: 0 0 21px;
-  border: 3px solid #dbeafe;
-  border-top-color: #2563eb;
-  border-radius: 50%;
-  animation: ktvdi-coverage-spin .8s linear infinite;
-}
-@keyframes ktvdi-coverage-spin { to { transform: rotate(360deg); } }

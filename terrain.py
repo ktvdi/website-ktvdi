@@ -267,6 +267,16 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         # Merah: lemah; kuning: sedang; hijau: kuat; biru: sangat kuat.
         margin_db = rx_dbm - float(rx_threshold_dbm)
         valid_signal = np.isfinite(rx_dbm)
+        valid_pixel_count = int(np.count_nonzero(valid_signal))
+        valid_pixel_percent = 100.0 * valid_pixel_count / float(valid_signal.size)
+        if valid_pixel_count == 0:
+            raise ValueError(
+                "Perhitungan terrain selesai, tetapi tidak ada piksel yang "
+                "memenuhi ambang penerimaan sinyal "
+                f"({float(rx_threshold_dbm):g} dBm). Periksa ERP, tinggi antena, "
+                "frekuensi kanal, dan ambang RX. Coba ambang RX yang lebih rendah "
+                "(misalnya -100 dBm) untuk pengujian indikatif."
+            )
         rgba = np.zeros((*rx_dbm.shape, 4), dtype=np.uint8)
         color_bins = [
             (margin_db < 6.0, (235, 35, 35)),       # Lemah
@@ -285,6 +295,8 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         outputs.append({
             "name": f"{tx.get('mux','MUX')} — {tx.get('wilayah','')}",
             "image": rgba, "bounds": [[south_ll, west_ll], [north_ll, east_ll]],
+            "valid_pixel_count": valid_pixel_count,
+            "valid_pixel_percent": round(valid_pixel_percent, 3),
             "min_dbm": float(np.nanpercentile(rx_dbm, 5)) if np.any(np.isfinite(rx_dbm)) else None,
             "max_dbm": float(np.nanpercentile(rx_dbm, 95)) if np.any(np.isfinite(rx_dbm)) else None,
             "frequency": freq, "max_range_km": max_range_km,

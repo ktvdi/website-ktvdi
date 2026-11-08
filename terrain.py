@@ -3,6 +3,7 @@ import math
 import re
 import os
 import tempfile
+import shutil
 
 def _uhf_frequency_mhz(mux_name):
     """Perkiraan frekuensi tengah kanal UHF DVB-T2 (kanal 21 mulai 474 MHz, lebar 8 MHz)."""
@@ -130,6 +131,26 @@ def _resolve_transmitter_technical_data(tx, fallback_erp_watt=1000.0,
     }
 
 
+def _clear_legacy_dem_caches():
+    """Hapus cache DEM KTVDI versi lama yang mungkin tertinggal di server."""
+    candidates = (
+        os.path.join(tempfile.gettempdir(), "ktvdi_elevation_cache_v1"),
+        os.path.join(tempfile.gettempdir(), "ktvdi_elevation_cache_v2"),
+        os.path.join(tempfile.gettempdir(), "ktvdi_elevation_cache_v3"),
+        os.path.join(tempfile.gettempdir(), "ktvdi_dem_cache_v1"),
+        os.path.join(tempfile.gettempdir(), "ktvdi_dem_cache_v2"),
+        os.path.join(tempfile.gettempdir(), "ktvdi_dem_cache_v3"),
+    )
+    for path in candidates:
+        if os.path.isdir(path):
+            shutil.rmtree(path, ignore_errors=True)
+        elif os.path.isfile(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
 def _terrain_dem_coverage(located, center_lat, center_lon,
                           erp_watt=1000.0, tx_height_m=30.0, rx_height_m=10.0,
                           rx_threshold_dbm=-90.0, extra_loss_db=4.0,
@@ -144,6 +165,7 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
     """
     import os
     import tempfile
+    _clear_legacy_dem_caches()
     import numpy as np
     import rasterio
     import elevation
@@ -202,9 +224,8 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         north = max(v[1] for v in corners) + 0.01
 
         dem_product = "MAPZEN"
-        # Tidak menyimpan cache DEM antar-perhitungan. Tile, VRT, dan GeoTIFF
-        # ditempatkan di direktori sementara yang otomatis dihapus setelah
-        # raster selesai dibaca, sehingga file rusak lama tidak dipakai ulang.
+        # Tidak menggunakan cache DEM persisten. Semua tile, VRT, dan GeoTIFF
+        # hanya boleh berada di direktori sementara untuk permintaan ini.
         last_dem_error = None
         dem = None
         dst_transform = None
@@ -213,15 +234,15 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         for attempt in range(3):
             try:
                 with tempfile.TemporaryDirectory(prefix="ktvdi_dem_") as dem_work_dir:
-                    dem_cache_dir = os.path.join(dem_work_dir, "tiles")
-                    os.makedirs(dem_cache_dir, exist_ok=True)
+                    ephemeral_tile_dir = os.path.join(dem_work_dir, "tiles")
+                    os.makedirs(ephemeral_tile_dir, exist_ok=True)
                     dem_path = os.path.join(dem_work_dir, "terrain.tif")
 
                     elevation.clip(
                         bounds=(west, south, east, north),
                         output=dem_path,
                         product=dem_product,
-                        cache_dir=dem_cache_dir,
+                        cache_dir=ephemeral_tile_dir,
                     )
 
                     # Validasi seluruh blok agar TIFF yang korup tidak diteruskan.
@@ -258,7 +279,7 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         if last_dem_error is not None or dem is None:
             raise RuntimeError(
                 "Data DEM MAPZEN gagal diunduh atau dibaca setelah 3 percobaan. "
-                "File sementara sudah dibuang setiap percobaan. "
+                "Tidak ada cache persisten; file sementara setiap percobaan telah dibuang. "
                 f"Detail: {last_dem_error}"
             ) from last_dem_error
 
@@ -330,7 +351,7 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         west_ll, south_ll = from_utm.transform(xmin, tx_y-radius_m)
         east_ll, north_ll = from_utm.transform(tx_x+radius_m, ymax)
         outputs.append({
-            "coverage_engine": "legacy-dem-mapzen-knife-edge-no-cache-v1",
+            "coverage_engine": "legacy-dem-mapzen-knife-edge-no-cache",
             "name": f"{tx.get('mux','MUX')} — {tx.get('wilayah','')}",
             "image": rgba, "bounds": [[south_ll, west_ll], [north_ll, east_ll]],
             "min_dbm": float(np.nanpercentile(rx_dbm, 5)) if np.any(predicted_pixels) else None,

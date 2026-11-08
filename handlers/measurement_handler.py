@@ -157,19 +157,45 @@ def handle_measurement_handler(action: str, event: dict[str, Any], session: dict
                     sim_rx, sim_threshold, sim_loss,
                 )
                 valid_pixels = int(layer_data.get("valid_pixel_count", 0) or 0)
+                predicted_pixels = int(layer_data.get("predicted_pixel_count", 0) or 0)
+                min_dbm = layer_data.get("min_dbm")
+                max_dbm = layer_data.get("max_dbm")
+                threshold_dbm = layer_data.get("rx_threshold_dbm", sim_threshold)
                 if valid_pixels > 0:
                     result_message = (
-                        f"Lingkaran prediksi berdiameter 200 km ditampilkan. "
-                        f"{valid_pixels:,} piksel memenuhi ambang sinyal. "
+                        f"Overlay prediksi berdiameter 200 km diproses. "
+                        f"{predicted_pixels:,} piksel dihitung; {valid_pixels:,} piksel "
+                        f"memenuhi ambang {float(threshold_dbm):g} dBm. "
                         "Hasil bersifat indikatif, bukan jaminan penerimaan siaran."
+                    )
+                elif predicted_pixels > 0:
+                    signal_range = ""
+                    if min_dbm is not None and max_dbm is not None:
+                        signal_range = (
+                            f" Rentang estimasi daya terima {float(min_dbm):.1f} "
+                            f"hingga {float(max_dbm):.1f} dBm."
+                        )
+                    result_message = (
+                        f"Overlay sinyal lemah tetap diproses: {predicted_pixels:,} piksel "
+                        f"memiliki estimasi sinyal, tetapi belum ada yang memenuhi "
+                        f"ambang penerimaan {float(threshold_dbm):g} dBm. "
+                        "Piksel di bawah ambang seharusnya tampak merah pada peta."
+                        f"{signal_range} Hasil bersifat indikatif."
                     )
                 else:
                     result_message = (
-                        "Lingkaran prediksi berdiameter 200 km tetap ditampilkan. "
-                        "Belum ada piksel yang memenuhi ambang penerimaan sinyal; "
-                        "lapisan warna sinyal karena itu transparan. "
-                        "Hasil bersifat indikatif."
+                        "Perhitungan DEM selesai, tetapi tidak menghasilkan piksel "
+                        "prediksi yang dapat digambar di dalam area 200 km. "
+                        "Ini bukan bukti bahwa wilayah pasti tidak terjangkau; "
+                        "perlu pemeriksaan data DEM dan koordinat pemancar."
                     )
+                layer_data["coverage_diagnostics"] = {
+                    "predicted_pixel_count": predicted_pixels,
+                    "accepted_pixel_count": valid_pixels,
+                    "rx_threshold_dbm": threshold_dbm,
+                    "min_dbm": min_dbm,
+                    "max_dbm": max_dbm,
+                }
                 return {"ok":True,"action":action,"terrain":layer_data,"message":result_message}
     if action=="load_measurements":
                 authenticated=has_map_private_access(session)

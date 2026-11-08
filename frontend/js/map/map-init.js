@@ -1,14 +1,7 @@
 /* Leaflet map setup, controls, GPS, and point editor map. */
 'use strict';
 function initMap() { const el = document.getElementById('map'); if (!el || !window.L)
-    return; if (state.map) { try { state.map.off(); state.map.remove(); } catch (_) {} state.map = null; state.mapTerrainLayer = null; state.mapCoverageCircle = null; state.mapLayerControl = null; } state.map = L.map(el, { preferCanvas: true, fadeAnimation: true, markerZoomAnimation: true }).setView([-2.5, 118], 5); const street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(state.map); const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles © Esri' }); const baseLayers = { 'Peta jalan': street, 'Satelit': satellite }; const overlays = {}; if (state.terrain?.image_data_uri && Array.isArray(state.terrain.bounds)) {
-    const terrain = L.imageOverlay(state.terrain.image_data_uri, state.terrain.bounds, { opacity: .82, interactive: false });
-    overlays['Prediksi terrain DEM'] = terrain;
-    state.mapTerrainLayer = terrain;
-    terrain.addTo(state.map);
-    if (typeof addTerrainLegend === 'function') addTerrainLegend();
-    state.map.fitBounds(state.terrain.bounds, { padding: [18, 18] });
-} state.mapLayerControl = L.control.layers(baseLayers, overlays, { position: 'topright', collapsed: true }).addTo(state.map); L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(state.map); drawMapLayers(); if (!state.terrain && state.selected) {
+    return; if (state.map) { try { state.map.off(); state.map.remove(); } catch (_) {} state.map = null; state.mapLayerControl = null; } state.map = L.map(el, { preferCanvas: true, fadeAnimation: true, markerZoomAnimation: true }).setView([-2.5, 118], 5); const street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(state.map); const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles © Esri' }); const baseLayers = { 'Peta jalan': street, 'Satelit': satellite }; state.mapLayerControl = L.control.layers(baseLayers, null, { position: 'topright', collapsed: true }).addTo(state.map); L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(state.map); drawMapLayers(); if (state.selected) {
     const r = state.rows.find(x => x.provinsi === state.selected.provinsi && x.wilayah === state.selected.wilayah && x.mux === state.selected.mux);
     if (hasValidTransmitterCoordinates(r))
         state.map.setView([mapViewerCoordinate(r.latitude), mapViewerCoordinate(r.longitude)], auth() ? 11 : 8);

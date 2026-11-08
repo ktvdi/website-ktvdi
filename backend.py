@@ -86,4 +86,4 @@ def handle_event(event: dict[str, Any], session: dict[str, Any], secrets=None) -
             return {"ok": True, "stats": get_stats(), "rows": rows, "changes": get_recent_changes()}
         return {"ok": False, "message": "Aksi tidak dikenal."}
     except Exception as exc:
-        return {"ok": False, "message": str(exc) if isinstance(exc, (ValueError, PermissionError, RuntimeError)) else "Terjadi kesalahan layanan. Periksa konfigurasi dan log server."}
+        return {"ok": False, "action": action, "message": str(exc) if isinstance(exc, (ValueError, PermissionError, RuntimeError)) else "Terjadi kesalahan layanan. Periksa konfigurasi dan log server."}

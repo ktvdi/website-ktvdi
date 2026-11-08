@@ -62,7 +62,20 @@ def _cached_terrain_layer(tx_for_calc, lat, lon, fallback_erp, fallback_tx, sim_
     if not layers:
         raise ValueError("Tidak ada hasil prediksi terrain.")
     layer = layers[0]
-    image = Image.fromarray(layer["image"], mode="RGBA")
+    image_array = layer.get("image")
+    bounds = layer.get("bounds")
+    if image_array is None or getattr(image_array, "ndim", 0) != 3 or image_array.shape[2] != 4:
+        raise RuntimeError("Raster coverage tidak menghasilkan gambar RGBA yang valid.")
+    if not isinstance(bounds, (list, tuple)) or len(bounds) != 2 or any(
+        not isinstance(point, (list, tuple)) or len(point) != 2
+        for point in bounds
+    ):
+        raise RuntimeError("Batas geografis coverage tidak valid.")
+    if not (bounds[0][0] < bounds[1][0] and bounds[0][1] < bounds[1][1]):
+        raise RuntimeError("Batas geografis coverage tidak memiliki rentang yang valid.")
+    if int(layer.get("valid_pixel_count", 0)) <= 0:
+        raise ValueError("Tidak ada piksel coverage yang memenuhi ambang penerimaan sinyal.")
+    image = Image.fromarray(image_array.astype("uint8", copy=False), mode="RGBA")
     buf = BytesIO()
     image.save(buf, format="PNG", optimize=True)
     layer_data = {k: v for k, v in layer.items() if k != "image"}

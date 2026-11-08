@@ -56,10 +56,16 @@ function drawMapLayers() {
             const key = [r.provinsi, r.wilayah, r.mux].join('|');
             const selected = state.selected && key === [state.selected.provinsi, state.selected.wilayah, state.selected.mux].join('|');
             const channels = (r.siaran || []).length ? (r.siaran || []).map(x => `<li>${esc(x)}</li>`).join('') : '<li>Belum ada data kanal</li>';
-            const popup = `<div class="transmitter-popup"><div class="popup-kicker">INFORMASI PEMANCAR</div><b>Wilayah Layanan</b><div>${esc(r.wilayah || '—')}, ${esc(r.provinsi || '—')}</div><b>Nama MUX</b><div>${esc(r.mux || '—')}</div><b>Daftar Kanal</b><ul>${channels}</ul></div>`;
+            const popup = `<div class="transmitter-popup"><div class="popup-kicker">INFORMASI PEMANCAR</div><b>Wilayah Layanan</b><div>${esc(r.wilayah || '—')}, ${esc(r.provinsi || '—')}</div><b>Nama MUX</b><div>${esc(r.mux || '—')}</div><b>Daftar Kanal</b><ul>${channels}</ul><button type="button" class="small-action" data-show-technical="${attr(key)}">Lihat Data Teknis</button></div>`;
             const marker = L.marker([mapViewerCoordinate(r.latitude), mapViewerCoordinate(r.longitude)], { title: rowTitle(r), alt: rowTitle(r), keyboard: true });
             marker.bindPopup(popup, { maxWidth: 1200 });
-            marker.on('click', () => window.ktvdiSelect(key, false));
+            marker.on('click', () => {
+                const [provinsi, wilayah, mux] = key.split('|');
+                state.selected = { provinsi, wilayah, mux };
+                state.mapMuxSelection = key;
+                const filter = document.getElementById('mapMuxFilter');
+                if (filter) filter.value = key;
+            });
             if (selected) marker.setZIndexOffset(1000);
             marker.addTo(state.mapTransmitters);
             state.mapMarkerIndex[key] = marker;

@@ -31,15 +31,5 @@ document.addEventListener('change', e => { if (e.target && e.target.id === 'data
     state.pointSelected = e.target.value;
     render();
     return;
-} if (e.target && e.target.id === 'autoTerrainToggle') {
-    state.terrainAuto = !!e.target.checked;
-    if (state.terrainAuto && state.selected && !state.terrain) {
-        const key = [state.selected.provinsi, state.selected.wilayah, state.selected.mux].join('|');
-        if (state.terrainRequestedKey !== key) {
-            state.terrainRequestedKey = key;
-            notice('Menghitung prediksi terrain dari data DEM…');
-            send('calculate_terrain', state.selected);
-        }
-    }
 } });
 

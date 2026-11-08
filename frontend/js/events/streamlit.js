@@ -103,16 +103,5 @@ if (!window.__ktvdiRestoreRequested) {
     const c = document.getElementById('profileCard');
     if (c)
         c.innerHTML = profileCard(state.viewedProfile);
-} if (state.page === 'map' && state.selected) {
-    focusTransmitterMap();
-    if (state.result?.action === 'load_details' && state.terrainAuto) {
-        const selectedRow = state.rows.find(x => x.provinsi === state.selected.provinsi && x.wilayah === state.selected.wilayah && x.mux === state.selected.mux);
-        const key = [state.selected.provinsi, state.selected.wilayah, state.selected.mux].join('|');
-        if (hasValidTransmitterCoordinates(selectedRow) && /\bUHF\s*(2[1-9]|3[0-9]|4[0-8])\b/i.test(state.selected.mux) && state.terrainRequestedKey !== key) {
-            state.terrainRequestedKey = key;
-            notice('Menghitung prediksi terrain dari DEM MAPZEN…');
-            send('calculate_terrain', state.selected);
-        }
-    }
-} });
+} if (state.page === 'map' && state.selected) focusTransmitterMap(); });
 

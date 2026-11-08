@@ -52,6 +52,7 @@ function render() {
             </aside>
             <div class="map-main-column">
               <div class="map-canvas-card"><div class="map-canvas-toolbar"><div><strong>Peta interaktif</strong><span>Jelajahi lokasi pemancar di seluruh Indonesia</span></div><span class="map-live-indicator"><i></i> DATA PEMANCAR</span></div><div class="map-canvas-wrap"><div id="map" role="application" aria-label="Peta interaktif lokasi pemancar TV digital"></div><button type="button" class="map-location-control" id="mapLocate" aria-label="Lokasi saya" title="Lokasi saya"><i data-lucide="crosshair" aria-hidden="true"></i></button></div><div class="map-coordinate-bar"><i data-lucide="map-pin"></i><span id="mapCoordinates">Arahkan kursor ke peta untuk melihat koordinat</span><span class="map-coordinate-hint">Leaflet · OpenStreetMap</span></div></div>
+              <p class="map-last-updated">Pembaruan Peta terakhir: <strong>${esc(state.mapLastUpdated || 'Belum ada pembaruan')}</strong></p>
               <section id="detailsPanel" class="map-details-placeholder"><div class="map-empty-icon"><i data-lucide="mouse-pointer-click"></i></div><strong>Pilih marker pemancar</strong><p>Pilih salah satu titik pada peta untuk melihat detail siaran, data teknis, dan kontribusi pengukuran komunitas.</p></section>
             </div>
           </div>

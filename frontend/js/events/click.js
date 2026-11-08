@@ -12,6 +12,29 @@ window.ktvdiRunCoverage = function (key, button) {
     state.mapMuxSelection = key;
     state.terrain = null;
     state.terrainRequestedKey = key;
+    // Tampilkan batas analisis 200 km segera setelah tombol ditekan.
+    // Lingkaran ini independen dari hasil model sinyal/DEM.
+    if (state.map && window.L && typeof L.circle === 'function') {
+        if (state.mapCoverageCircle) {
+            try {
+                if (state.mapLayerControl) state.mapLayerControl.removeLayer(state.mapCoverageCircle);
+                if (state.map.hasLayer(state.mapCoverageCircle)) state.map.removeLayer(state.mapCoverageCircle);
+            } catch (_) {}
+            state.mapCoverageCircle = null;
+        }
+        const tx = (state.rows || []).find(row => [row.provinsi, row.wilayah, row.mux].join('|') === key);
+        if (tx && hasValidTransmitterCoordinates(tx)) {
+            const center = [mapViewerCoordinate(tx.latitude), mapViewerCoordinate(tx.longitude)];
+            const circle = L.circle(center, {
+                radius: 100000, color: '#2563eb', weight: 2.5,
+                opacity: .95, fillColor: '#3b82f6', fillOpacity: .06,
+                dashArray: '8 6', interactive: false
+            }).addTo(state.map);
+            state.mapCoverageCircle = circle;
+            if (state.mapLayerControl) state.mapLayerControl.addOverlay(circle, 'Batas prediksi 200 km');
+            state.map.fitBounds(circle.getBounds(), { padding: [18, 18], animate: true, duration: .45 });
+        }
+    }
     if (button) {
         button.disabled = true;
         button.textContent = 'Menghitung Coverage…';

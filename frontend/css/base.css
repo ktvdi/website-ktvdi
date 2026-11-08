@@ -125,3 +125,6 @@
 
 
 .map-legend{display:flex;gap:9px 16px;flex-wrap:wrap;padding:3px 2px 10px;color:#526b80;font-size:11px}.map-legend span{display:inline-flex;align-items:center;gap:6px}.map-legend i{display:inline-block;width:10px;height:10px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #64748b}.map-legend .legend-transmitter{background:#005A9C}.map-legend .legend-measurement.good{background:#16a34a}.map-legend .legend-measurement.medium{background:#eab308}.map-legend .legend-measurement.poor{background:#dc2626}
+
+/* Halaman Peta Pemancar: fokus hanya pada peta interaktif */
+.map-only-page{width:100%;margin:0;padding:0}.map-only-page #map{width:100%;height:calc(100vh - 150px);min-height:480px;border-radius:0;z-index:1}

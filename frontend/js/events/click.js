@@ -1,7 +1,18 @@
 /* KTVDI frontend events: delegated UI events and Streamlit message lifecycle. */
 'use strict';
 // Global delegated navigation and forms.
-document.addEventListener('click', e => { const toggle = e.target.closest('[data-toggle-password]'); if (toggle) {
+document.addEventListener('click', e => { const showTechnical = e.target.closest('[data-show-technical]'); if (showTechnical) {
+    const [provinsi, wilayah, mux] = showTechnical.dataset.showTechnical.split('|');
+    state.selected = { provinsi, wilayah, mux };
+    state.mapMuxSelection = showTechnical.dataset.showTechnical;
+    state.detail = null;
+    state.comments = [];
+    state.measurements = [];
+    showTechnical.disabled = true;
+    showTechnical.textContent = 'Memuat data…';
+    send('load_details', state.selected);
+    return;
+} const toggle = e.target.closest('[data-toggle-password]'); if (toggle) {
     const input = toggle.closest('.password-input-wrap')?.querySelector('input[name="password"]');
     if (input) {
         const visible = input.type === 'password';

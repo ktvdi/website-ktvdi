@@ -145,7 +145,17 @@ document.addEventListener('click', e => { const toggle = e.target.closest('[data
     return;
 } const restore = e.target.closest('[data-restore]'); if (restore && confirm('Pulihkan snapshot data ini?'))
     send('admin_restore', { log_id: restore.dataset.restore }); const user = e.target.closest('[data-user]'); if (user)
-    send('load_user_profile', { username: user.dataset.user }); const terrain = e.target.closest('[data-terrain]'); if (terrain && state.selected) {
+    send('load_user_profile', { username: user.dataset.user }); const coverage = e.target.closest('[data-coverage]'); if (coverage) {
+    const key = coverage.dataset.coverage;
+    const [provinsi, wilayah, mux] = key.split('|');
+    state.selected = { provinsi, wilayah, mux };
+    state.mapMuxSelection = key;
+    state.terrain = null;
+    state.terrainRequestedKey = key;
+    notice('Menghitung prediksi terrain dari data DEM…');
+    send('calculate_terrain', state.selected);
+    return;
+} const terrain = e.target.closest('[data-terrain]'); if (terrain && state.selected) {
     state.terrainRequestedKey = [state.selected.provinsi, state.selected.wilayah, state.selected.mux].join('|');
     notice('Menghitung prediksi terrain dari data DEM…');
     send('calculate_terrain', state.selected);

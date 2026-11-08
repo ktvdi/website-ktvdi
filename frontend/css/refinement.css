@@ -243,3 +243,10 @@ tr:hover td { background: #f8fcfe; }
     height: 60px;
   }
 }
+
+
+/* Smooth feedback for terrain coverage requests and map overlays. */
+.popup-coverage-button { transition: opacity 180ms ease, transform 180ms ease; }
+.popup-coverage-button.is-loading { opacity: .72; cursor: progress; }
+.popup-coverage-button:disabled { pointer-events: none; }
+.leaflet-overlay-pane img.leaflet-image-layer { will-change: opacity; }

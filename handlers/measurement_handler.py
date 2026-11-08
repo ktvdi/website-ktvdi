@@ -73,8 +73,9 @@ def _cached_terrain_layer(tx_for_calc, lat, lon, fallback_erp, fallback_tx, sim_
         raise RuntimeError("Batas geografis coverage tidak valid.")
     if not (bounds[0][0] < bounds[1][0] and bounds[0][1] < bounds[1][1]):
         raise RuntimeError("Batas geografis coverage tidak memiliki rentang yang valid.")
-    if int(layer.get("valid_pixel_count", 0)) <= 0:
-        raise ValueError("Tidak ada piksel coverage yang memenuhi ambang penerimaan sinyal.")
+    # Jangan gagalkan seluruh hasil ketika tidak ada piksel yang lolos ambang.
+    # Raster transparan tetap berguna: batas lingkaran 200 km ditampilkan
+    # terpisah dari lapisan sinyal, sehingga area tanpa sinyal tidak disamarkan.
     image = Image.fromarray(image_array.astype("uint8", copy=False), mode="RGBA")
     buf = BytesIO()
     image.save(buf, format="PNG", optimize=True)
@@ -155,7 +156,21 @@ def handle_measurement_handler(action: str, event: dict[str, Any], session: dict
                     tx_for_calc, lat, lon, fallback_erp, fallback_tx,
                     sim_rx, sim_threshold, sim_loss,
                 )
-                return {"ok":True,"terrain":layer_data,"message":"Prediksi terrain selesai. Hasil bersifat indikatif, bukan jaminan penerimaan sinyal."}
+                valid_pixels = int(layer_data.get("valid_pixel_count", 0) or 0)
+                if valid_pixels > 0:
+                    result_message = (
+                        f"Lingkaran prediksi berdiameter 200 km ditampilkan. "
+                        f"{valid_pixels:,} piksel memenuhi ambang sinyal. "
+                        "Hasil bersifat indikatif, bukan jaminan penerimaan siaran."
+                    )
+                else:
+                    result_message = (
+                        "Lingkaran prediksi berdiameter 200 km tetap ditampilkan. "
+                        "Belum ada piksel yang memenuhi ambang penerimaan sinyal; "
+                        "lapisan warna sinyal karena itu transparan. "
+                        "Hasil bersifat indikatif."
+                    )
+                return {"ok":True,"terrain":layer_data,"message":result_message}
     if action=="load_measurements":
                 authenticated=has_map_private_access(session)
                 raw=db.reference("signal_measurements").get() or {}; records=[]

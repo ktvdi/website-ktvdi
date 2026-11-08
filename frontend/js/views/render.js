@@ -31,7 +31,6 @@ function render() {
         app.innerHTML = `<section class="map-dashboard" aria-label="Dashboard Peta Pemancar">
           <header class="map-dashboard-head">
             <div><span class="map-eyebrow">MONITORING SIARAN DIGITAL</span><h1>Peta Pemancar</h1><p>Pantau lokasi pemancar, wilayah layanan, dan informasi teknis siaran televisi digital Indonesia.</p></div>
-            <div class="map-head-actions"><button type="button" class="map-utility-btn" id="mapLocate"><i data-lucide="crosshair" aria-hidden="true"></i> Lokasi saya</button><button type="button" class="map-utility-btn" id="resetMapFilters"><i data-lucide="rotate-ccw" aria-hidden="true"></i> Reset filter</button></div>
           </header>
           <div class="map-kpi-grid">
             <article class="map-kpi"><span class="map-kpi-icon"><i data-lucide="radio-tower"></i></span><div><small>Pemancar berkoordinat</small><strong>${located.length.toLocaleString('id-ID')}</strong><em>Lokasi tersedia di peta</em></div></article>
@@ -46,12 +45,13 @@ function render() {
               <label class="map-filter-field">Provinsi<select id="mapProvinceFilter"><option value="">Semua provinsi</option>${options(provinces,state.mapProvince)}</select></label>
               <label class="map-filter-field">Wilayah layanan<select id="mapAreaFilter"><option value="">Semua wilayah</option>${options(areas,state.mapArea)}</select></label>
               <label class="map-filter-field">Pilih pemancar<select id="mapMuxFilter"><option value="">Semua pemancar</option>${muxes.map(x=>`<option value="${attr(x.key)}" ${x.key===state.mapMuxSelection?'selected':''}>${esc(x.label)}</option>`).join('')}</select></label>
+              <button type="button" class="map-utility-btn map-reset-filter" id="resetMapFilters"><i data-lucide="rotate-ccw" aria-hidden="true"></i> Reset filter</button>
               <div class="map-filter-summary"><strong>${filtered.length.toLocaleString('id-ID')}</strong><span>pemancar ditampilkan</span></div>
               <div class="map-legend"><span><i class="map-legend-dot"></i> Lokasi pemancar</span><span><i class="map-legend-dot selected"></i> Pemancar dipilih</span></div>
               <p class="map-privacy-note"><i data-lucide="shield-check"></i> ${auth() ? 'Koordinat presisi tersedia untuk pengguna login.' : 'Koordinat publik ditampilkan dengan pembulatan untuk melindungi privasi.'}</p>
             </aside>
             <div class="map-main-column">
-              <div class="map-canvas-card"><div class="map-canvas-toolbar"><div><strong>Peta interaktif</strong><span>Jelajahi lokasi pemancar di seluruh Indonesia</span></div><span class="map-live-indicator"><i></i> DATA PEMANCAR</span></div><div id="map" role="application" aria-label="Peta interaktif lokasi pemancar TV digital"></div><div class="map-coordinate-bar"><i data-lucide="map-pin"></i><span id="mapCoordinates">Arahkan kursor ke peta untuk melihat koordinat</span><span class="map-coordinate-hint">Leaflet · OpenStreetMap</span></div></div>
+              <div class="map-canvas-card"><div class="map-canvas-toolbar"><div><strong>Peta interaktif</strong><span>Jelajahi lokasi pemancar di seluruh Indonesia</span></div><span class="map-live-indicator"><i></i> DATA PEMANCAR</span></div><div class="map-canvas-wrap"><div id="map" role="application" aria-label="Peta interaktif lokasi pemancar TV digital"></div><button type="button" class="map-location-control" id="mapLocate" aria-label="Lokasi saya" title="Lokasi saya"><i data-lucide="crosshair" aria-hidden="true"></i></button></div><div class="map-coordinate-bar"><i data-lucide="map-pin"></i><span id="mapCoordinates">Arahkan kursor ke peta untuk melihat koordinat</span><span class="map-coordinate-hint">Leaflet · OpenStreetMap</span></div></div>
               <section id="detailsPanel" class="map-details-placeholder"><div class="map-empty-icon"><i data-lucide="mouse-pointer-click"></i></div><strong>Pilih marker pemancar</strong><p>Pilih salah satu titik pada peta untuk melihat detail siaran, data teknis, dan kontribusi pengukuran komunitas.</p></section>
             </div>
           </div>

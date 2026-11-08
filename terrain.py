@@ -200,12 +200,72 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         north = max(v[1] for v in corners) + 0.01
 
         dem_product = "MAPZEN"
+        # Gunakan cache khusus KTVDI. Log produksi menunjukkan beberapa tile
+        # pada cache default elevation (~/.cache/elevation) rusak/TIFF tidak
+        # dapat didekode. Cache terisolasi ini menghindari penggunaan ulang
+        # tile rusak dari cache default tersebut.
+        dem_cache_dir = os.path.join(tempfile.gettempdir(), "ktvdi_elevation_cache_v2")
+        os.makedirs(dem_cache_dir, exist_ok=True)
         cache_key = (f"ktvdi_{dem_product.lower()}_terrain_d200km_{round(tx_lat,3)}_"
-                     f"{round(tx_lon,3)}_{int(round(cell))}m.tif")
+                     f"{round(tx_lon,3)}_{int(round(cell))}m_cachev2.tif")
         dem_path = os.path.join(tempfile.gettempdir(), cache_key)
-        if not os.path.exists(dem_path) or os.path.getsize(dem_path) < 1000:
-            elevation.clip(bounds=(west, south, east, north), output=dem_path,
-                           product=dem_product)
+
+        def _clip_and_validate_dem():
+            elevation.clip(
+                bounds=(west, south, east, north),
+                output=dem_path,
+                product=dem_product,
+                cache_dir=dem_cache_dir,
+            )
+            # Jangan menganggap proses clip berhasil hanya karena file ada.
+            # Pastikan GeoTIFF dapat dibuka dan memuat data elevasi.
+            with rasterio.open(dem_path) as check_src:
+                if (check_src.width <= 0 or check_src.height <= 0 or
+                        check_src.count < 1 or check_src.crs is None):
+                    raise ValueError("Metadata GeoTIFF DEM tidak valid.")
+                sample = check_src.read(
+                    1,
+                    out_shape=(min(256, check_src.height), min(256, check_src.width)),
+                    masked=True,
+                )
+                if sample.count() == 0:
+                    raise ValueError("GeoTIFF DEM tidak memiliki piksel elevasi valid.")
+
+        try:
+            if not os.path.exists(dem_path) or os.path.getsize(dem_path) < 1000:
+                _clip_and_validate_dem()
+            else:
+                # File hasil clip lama juga harus lolos validasi sebelum dipakai.
+                with rasterio.open(dem_path) as check_src:
+                    if (check_src.width <= 0 or check_src.height <= 0 or
+                            check_src.count < 1 or check_src.crs is None):
+                        raise ValueError("Metadata GeoTIFF DEM tidak valid.")
+                    sample = check_src.read(
+                        1,
+                        out_shape=(min(256, check_src.height), min(256, check_src.width)),
+                        masked=True,
+                    )
+                    if sample.count() == 0:
+                        raise ValueError("GeoTIFF DEM tidak memiliki piksel elevasi valid.")
+        except Exception as first_dem_error:
+            # Pulihkan cache khusus jika ada tile unduhan yang rusak, lalu
+            # unduh ulang sekali. Tidak menghapus cache global pengguna lain.
+            try:
+                if os.path.exists(dem_path):
+                    os.remove(dem_path)
+            except OSError:
+                pass
+            try:
+                elevation.distclean(cache_dir=dem_cache_dir, product=dem_product)
+                os.makedirs(dem_cache_dir, exist_ok=True)
+                _clip_and_validate_dem()
+            except Exception as retry_error:
+                raise RuntimeError(
+                    "Data DEM MAPZEN gagal dibaca setelah satu kali percobaan "
+                    "pemulihan cache. Periksa koneksi unduhan DEM dan ketersediaan "
+                    f"tile untuk area pemancar. Detail awal: {first_dem_error}; "
+                    f"detail percobaan ulang: {retry_error}"
+                ) from retry_error
 
         with rasterio.open(dem_path) as src:
             dst_transform, width, height = calculate_default_transform(
@@ -267,16 +327,6 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         # Merah: lemah; kuning: sedang; hijau: kuat; biru: sangat kuat.
         margin_db = rx_dbm - float(rx_threshold_dbm)
         valid_signal = np.isfinite(rx_dbm)
-        valid_pixel_count = int(np.count_nonzero(valid_signal))
-        valid_pixel_percent = 100.0 * valid_pixel_count / float(valid_signal.size)
-        if valid_pixel_count == 0:
-            raise ValueError(
-                "Perhitungan terrain selesai, tetapi tidak ada piksel yang "
-                "memenuhi ambang penerimaan sinyal "
-                f"({float(rx_threshold_dbm):g} dBm). Periksa ERP, tinggi antena, "
-                "frekuensi kanal, dan ambang RX. Coba ambang RX yang lebih rendah "
-                "(misalnya -100 dBm) untuk pengujian indikatif."
-            )
         rgba = np.zeros((*rx_dbm.shape, 4), dtype=np.uint8)
         color_bins = [
             (margin_db < 6.0, (235, 35, 35)),       # Lemah
@@ -295,8 +345,6 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         outputs.append({
             "name": f"{tx.get('mux','MUX')} — {tx.get('wilayah','')}",
             "image": rgba, "bounds": [[south_ll, west_ll], [north_ll, east_ll]],
-            "valid_pixel_count": valid_pixel_count,
-            "valid_pixel_percent": round(valid_pixel_percent, 3),
             "min_dbm": float(np.nanpercentile(rx_dbm, 5)) if np.any(np.isfinite(rx_dbm)) else None,
             "max_dbm": float(np.nanpercentile(rx_dbm, 95)) if np.any(np.isfinite(rx_dbm)) else None,
             "frequency": freq, "max_range_km": max_range_km,

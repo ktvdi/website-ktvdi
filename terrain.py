@@ -319,14 +319,18 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         eirp_dbm = 10.0*np.log10(max(float(erp_used), 0.001)*1000.0) + 2.15
         path_loss = 32.44 + 20.0*np.log10(float(freq)) + 20.0*np.log10(distance/1000.0)
         rx_dbm = eirp_dbm - path_loss - diffraction - float(extra_loss_db)
+        # Pertahankan estimasi daya terima untuk SEMUA piksel DEM valid di
+        # dalam radius 100 km. Jangan menghapus piksel di bawah ambang RX:
+        # piksel tersebut tetap perlu divisualisasikan sebagai sinyal lemah
+        # (merah), bukan dibuat transparan sehingga peta tampak kosong.
         rx_dbm = np.where(mask, rx_dbm, np.nan)
-        # Mask lagi di bawah ambang penerimaan yang diasumsikan.
-        rx_dbm = np.where(rx_dbm >= float(rx_threshold_dbm), rx_dbm, np.nan)
 
         # Klasifikasi warna berdasarkan margin daya terima terhadap ambang RX.
-        # Merah: lemah; kuning: sedang; hijau: kuat; biru: sangat kuat.
+        # Merah juga mencakup piksel di bawah ambang (belum memenuhi penerimaan).
+        # Kuning/hijau/biru menunjukkan margin positif yang makin besar.
         margin_db = rx_dbm - float(rx_threshold_dbm)
-        valid_signal = np.isfinite(rx_dbm)
+        predicted_pixels = np.isfinite(rx_dbm)
+        accepted_pixels = predicted_pixels & (rx_dbm >= float(rx_threshold_dbm))
         rgba = np.zeros((*rx_dbm.shape, 4), dtype=np.uint8)
         color_bins = [
             (margin_db < 6.0, (235, 35, 35)),       # Lemah
@@ -335,23 +339,26 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
             (margin_db >= 25.0, (25, 105, 235)),    # Sangat kuat
         ]
         for condition, rgb in color_bins:
-            selected = valid_signal & condition
+            selected = predicted_pixels & condition
             rgba[selected, 0] = rgb[0]
             rgba[selected, 1] = rgb[1]
             rgba[selected, 2] = rgb[2]
-        rgba[..., 3] = np.where(valid_signal, 220, 0).astype("uint8")
+        rgba[..., 3] = np.where(predicted_pixels, 220, 0).astype("uint8")
         west_ll, south_ll = from_utm.transform(xmin, tx_y-radius_m)
         east_ll, north_ll = from_utm.transform(tx_x+radius_m, ymax)
         outputs.append({
             "name": f"{tx.get('mux','MUX')} — {tx.get('wilayah','')}",
             "image": rgba, "bounds": [[south_ll, west_ll], [north_ll, east_ll]],
-            "min_dbm": float(np.nanpercentile(rx_dbm, 5)) if np.any(np.isfinite(rx_dbm)) else None,
-            "max_dbm": float(np.nanpercentile(rx_dbm, 95)) if np.any(np.isfinite(rx_dbm)) else None,
+            "min_dbm": float(np.nanpercentile(rx_dbm, 5)) if np.any(predicted_pixels) else None,
+            "max_dbm": float(np.nanpercentile(rx_dbm, 95)) if np.any(predicted_pixels) else None,
             "frequency": freq, "max_range_km": max_range_km,
             "terrain_radius_km": terrain_radius_km,
             "terrain_diameter_km": 2.0 * terrain_radius_km,
             "center_lat": float(tx_lat), "center_lon": float(tx_lon),
-            "valid_pixel_count": int(np.count_nonzero(valid_signal)),
+            # valid_pixel_count tetap berarti piksel yang memenuhi ambang RX
+            # agar pesan status backend tidak mengartikan semua prediksi sebagai penerimaan.
+            "valid_pixel_count": int(np.count_nonzero(accepted_pixels)),
+            "predicted_pixel_count": int(np.count_nonzero(predicted_pixels)),
             "fs_range_km": fs_range_km, "radio_horizon_km": horizon_km,
             "raster_resolution_m": cell, "rx_threshold_dbm": float(rx_threshold_dbm),
             "erp_used_w": float(erp_used), "tx_height_used_m": float(tx_height_used),

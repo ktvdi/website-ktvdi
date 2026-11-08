@@ -39,6 +39,22 @@ function drawMapLayers() {
             const popup = `<div class="transmitter-popup"><div class="popup-kicker">INFORMASI PEMANCAR</div><b>Wilayah Layanan</b><div>${esc(r.wilayah || '—')}, ${esc(r.provinsi || '—')}</div><b>Nama MUX</b><div>${esc(r.mux || '—')}</div><b>Daftar Kanal</b><ul>${channels}</ul>${selected && state.terrain ? `<div class="popup-terrain">Coverage tersedia · ${esc(state.terrain.min_dbm ?? '—')} hingga ${esc(state.terrain.max_dbm ?? '—')} dBm</div>` : ''}<button type="button" class="action popup-coverage-button" data-coverage="${attr(key)}">Lihat Coverage</button></div>`;
             const marker = L.marker([mapViewerCoordinate(r.latitude), mapViewerCoordinate(r.longitude)], { title: rowTitle(r), alt: rowTitle(r), keyboard: true });
             marker.bindPopup(popup, { maxWidth: 1200 });
+            // Leaflet disables click propagation inside popup content. Attach the
+            // action directly after the popup DOM has been created.
+            marker.on('popupopen', (event) => {
+                const button = event.popup.getElement()?.querySelector('[data-coverage]');
+                if (!button || button.dataset.listenerAttached === '1') return;
+                button.dataset.listenerAttached = '1';
+                button.addEventListener('click', (clickEvent) => {
+                    clickEvent.preventDefault();
+                    clickEvent.stopPropagation();
+                    if (typeof window.ktvdiRunCoverage === 'function') {
+                        window.ktvdiRunCoverage(button.dataset.coverage, button);
+                    } else {
+                        notice('Fungsi Coverage belum siap. Muat ulang halaman.');
+                    }
+                });
+            });
             marker.on('click', () => window.ktvdiSelect(key, false));
             if (selected) marker.setZIndexOffset(1000);
             marker.addTo(state.mapTransmitters);

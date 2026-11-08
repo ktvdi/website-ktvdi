@@ -59,6 +59,20 @@ function drawMapLayers() {
             const popup = `<div class="transmitter-popup"><div class="popup-kicker">INFORMASI PEMANCAR</div><b>Wilayah Layanan</b><div>${esc(r.wilayah || '—')}, ${esc(r.provinsi || '—')}</div><b>Nama MUX</b><div>${esc(r.mux || '—')}</div><b>Daftar Kanal</b><ul>${channels}</ul><div class="popup-actions"><button type="button" class="small-action" data-show-technical="${attr(key)}">Lihat Data Teknis</button><button type="button" class="small-action" data-coverage="${attr(key)}">Lihat Coverage</button></div></div>`;
             const marker = L.marker([mapViewerCoordinate(r.latitude), mapViewerCoordinate(r.longitude)], { title: rowTitle(r), alt: rowTitle(r), keyboard: true });
             marker.bindPopup(popup, { maxWidth: 1200 });
+            marker.on('popupopen', (event) => {
+                const coverageButton = event.popup.getElement()?.querySelector('[data-coverage]');
+                if (!coverageButton || coverageButton.dataset.coverageBound === '1') return;
+                coverageButton.dataset.coverageBound = '1';
+                coverageButton.addEventListener('click', (clickEvent) => {
+                    clickEvent.preventDefault();
+                    clickEvent.stopPropagation();
+                    if (typeof window.ktvdiRequestCoverage === 'function') {
+                        window.ktvdiRequestCoverage(coverageButton);
+                    } else {
+                        notice('Modul prediksi coverage belum siap. Muat ulang halaman.');
+                    }
+                });
+            });
             marker.on('click', () => {
                 const [provinsi, wilayah, mux] = key.split('|');
                 state.selected = { provinsi, wilayah, mux };

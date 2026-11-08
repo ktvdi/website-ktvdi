@@ -170,7 +170,7 @@ def handle_measurement_handler(action: str, event: dict[str, Any], session: dict
                         "lapisan warna sinyal karena itu transparan. "
                         "Hasil bersifat indikatif."
                     )
-                return {"ok":True,"terrain":layer_data,"message":result_message}
+                return {"ok":True,"action":action,"terrain":layer_data,"message":result_message}
     if action=="load_measurements":
                 authenticated=has_map_private_access(session)
                 raw=db.reference("signal_measurements").get() or {}; records=[]

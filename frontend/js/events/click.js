@@ -1,8 +1,18 @@
 /* KTVDI frontend events: delegated UI events and Streamlit message lifecycle. */
 'use strict';
 // Global delegated navigation and forms.
-document.addEventListener('click', e => { const coverage = e.target.closest('[data-coverage]'); if (coverage) {
+// Leaflet popup containers stop click propagation before the document bubble
+// phase. Capture the coverage action so popup buttons reliably reach Streamlit.
+document.addEventListener('click', e => {
+    const coverage = e.target instanceof Element ? e.target.closest('[data-coverage]') : null;
+    if (!coverage) return;
+    e.preventDefault();
+    e.stopPropagation();
     const [provinsi, wilayah, mux] = coverage.dataset.coverage.split('|');
+    if (!provinsi || !wilayah || !mux) {
+        notice('Data pemancar untuk prediksi coverage tidak lengkap.');
+        return;
+    }
     state.selected = { provinsi, wilayah, mux };
     state.mapMuxSelection = coverage.dataset.coverage;
     state.terrain = null;
@@ -12,8 +22,9 @@ document.addEventListener('click', e => { const coverage = e.target.closest('[da
     coverage.classList.add('is-loading');
     notice('Menghitung prediksi coverage berdasarkan kontur terrain dan data pemancar…');
     send('calculate_terrain', state.selected);
-    return;
-} const showTechnical = e.target.closest('[data-show-technical]'); if (showTechnical) {
+}, true);
+
+document.addEventListener('click', e => { const showTechnical = e.target.closest('[data-show-technical]'); if (showTechnical) {
     const [provinsi, wilayah, mux] = showTechnical.dataset.showTechnical.split('|');
     state.selected = { provinsi, wilayah, mux };
     state.mapMuxSelection = showTechnical.dataset.showTechnical;

@@ -1,6 +1,15 @@
 """Model indikatif propagasi dan difraksi terrain, dipindahkan dari aplikasi KTVDI lama."""
 import math
 import re
+import os
+import shutil
+import tempfile
+import threading
+import time
+
+# elevation.clip membangun cache MAPZEN bersama; serialisasi agar sesi
+# Streamlit paralel tidak saling merusak file TIFF/VRT sementara.
+_DEM_CACHE_LOCK = threading.RLock()
 
 def _uhf_frequency_mhz(mux_name):
     """Perkiraan frekuensi tengah kanal UHF DVB-T2 (kanal 21 mulai 474 MHz, lebar 8 MHz)."""
@@ -200,14 +209,12 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         north = max(v[1] for v in corners) + 0.01
 
         dem_product = "MAPZEN"
-        # Gunakan cache khusus KTVDI. Log produksi menunjukkan beberapa tile
-        # pada cache default elevation (~/.cache/elevation) rusak/TIFF tidak
-        # dapat didekode. Cache terisolasi ini menghindari penggunaan ulang
-        # tile rusak dari cache default tersebut.
-        dem_cache_dir = os.path.join(tempfile.gettempdir(), "ktvdi_elevation_cache_v2")
+        # Cache v3 sengaja dipisahkan dari cache lama yang pada log produksi
+        # berisi tile TIFF rusak dan VRT yang gagal dibuat.
+        dem_cache_dir = os.path.join(tempfile.gettempdir(), "ktvdi_elevation_cache_v3")
         os.makedirs(dem_cache_dir, exist_ok=True)
         cache_key = (f"ktvdi_{dem_product.lower()}_terrain_d200km_{round(tx_lat,3)}_"
-                     f"{round(tx_lon,3)}_{int(round(cell))}m_cachev2.tif")
+                     f"{round(tx_lon,3)}_{int(round(cell))}m_cachev3.tif")
         dem_path = os.path.join(tempfile.gettempdir(), cache_key)
 
         def _clip_and_validate_dem():
@@ -217,55 +224,65 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
                 product=dem_product,
                 cache_dir=dem_cache_dir,
             )
-            # Jangan menganggap proses clip berhasil hanya karena file ada.
-            # Pastikan GeoTIFF dapat dibuka dan memuat data elevasi.
+            # Validasi seluruh blok TIFF, bukan hanya sampel kecil. TIFF yang
+            # rusak di bagian lain bisa lolos sampel lalu gagal saat reproject.
+            valid_pixels = 0
             with rasterio.open(dem_path) as check_src:
                 if (check_src.width <= 0 or check_src.height <= 0 or
                         check_src.count < 1 or check_src.crs is None):
                     raise ValueError("Metadata GeoTIFF DEM tidak valid.")
-                sample = check_src.read(
-                    1,
-                    out_shape=(min(256, check_src.height), min(256, check_src.width)),
-                    masked=True,
-                )
-                if sample.count() == 0:
+                for _, window in check_src.block_windows(1):
+                    block = check_src.read(1, window=window, masked=True)
+                    valid_pixels += int(block.count())
+                if valid_pixels == 0:
                     raise ValueError("GeoTIFF DEM tidak memiliki piksel elevasi valid.")
 
-        try:
-            if not os.path.exists(dem_path) or os.path.getsize(dem_path) < 1000:
-                _clip_and_validate_dem()
-            else:
-                # File hasil clip lama juga harus lolos validasi sebelum dipakai.
-                with rasterio.open(dem_path) as check_src:
-                    if (check_src.width <= 0 or check_src.height <= 0 or
-                            check_src.count < 1 or check_src.crs is None):
-                        raise ValueError("Metadata GeoTIFF DEM tidak valid.")
-                    sample = check_src.read(
-                        1,
-                        out_shape=(min(256, check_src.height), min(256, check_src.width)),
-                        masked=True,
-                    )
-                    if sample.count() == 0:
-                        raise ValueError("GeoTIFF DEM tidak memiliki piksel elevasi valid.")
-        except Exception as first_dem_error:
-            # Pulihkan cache khusus jika ada tile unduhan yang rusak, lalu
-            # unduh ulang sekali. Tidak menghapus cache global pengguna lain.
+        def _purge_dem_cache():
+            # Hapus output clip dan seluruh cache produk, termasuk cache tile,
+            # spool unduhan, serta MAPZEN.vrt yang mungkin setengah terbentuk.
             try:
                 if os.path.exists(dem_path):
                     os.remove(dem_path)
             except OSError:
                 pass
-            try:
-                elevation.distclean(cache_dir=dem_cache_dir, product=dem_product)
-                os.makedirs(dem_cache_dir, exist_ok=True)
-                _clip_and_validate_dem()
-            except Exception as retry_error:
+            shutil.rmtree(os.path.join(dem_cache_dir, dem_product), ignore_errors=True)
+            os.makedirs(dem_cache_dir, exist_ok=True)
+
+        # elevation.clip tidak aman dijalankan bersamaan pada cache yang sama.
+        # Kunci juga mencakup pemulihan sehingga sesi lain tidak membaca cache
+        # ketika tile/VRT sedang dihapus dan dibangun ulang.
+        with _DEM_CACHE_LOCK:
+            last_dem_error = None
+            for attempt in range(3):
+                try:
+                    if not os.path.exists(dem_path) or os.path.getsize(dem_path) < 1000:
+                        _clip_and_validate_dem()
+                    else:
+                        # Cache hasil clip yang sudah ada tetap divalidasi penuh.
+                        with rasterio.open(dem_path) as check_src:
+                            if (check_src.width <= 0 or check_src.height <= 0 or
+                                    check_src.count < 1 or check_src.crs is None):
+                                raise ValueError("Metadata GeoTIFF DEM tidak valid.")
+                            valid_pixels = 0
+                            for _, window in check_src.block_windows(1):
+                                block = check_src.read(1, window=window, masked=True)
+                                valid_pixels += int(block.count())
+                            if valid_pixels == 0:
+                                raise ValueError("GeoTIFF DEM tidak memiliki piksel elevasi valid.")
+                    last_dem_error = None
+                    break
+                except Exception as dem_error:
+                    last_dem_error = dem_error
+                    _purge_dem_cache()
+                    if attempt < 2:
+                        # Beri waktu singkat untuk unduhan ulang setelah kegagalan jaringan.
+                        time.sleep(1.5 * (attempt + 1))
+            if last_dem_error is not None:
                 raise RuntimeError(
-                    "Data DEM MAPZEN gagal dibaca setelah satu kali percobaan "
-                    "pemulihan cache. Periksa koneksi unduhan DEM dan ketersediaan "
-                    f"tile untuk area pemancar. Detail awal: {first_dem_error}; "
-                    f"detail percobaan ulang: {retry_error}"
-                ) from retry_error
+                    "Data DEM MAPZEN gagal dibaca setelah 3 percobaan. "
+                    "Cache tile/VRT sudah dibersihkan dan dicoba ulang. "
+                    f"Detail: {last_dem_error}"
+                ) from last_dem_error
 
         with rasterio.open(dem_path) as src:
             dst_transform, width, height = calculate_default_transform(

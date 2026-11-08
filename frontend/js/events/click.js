@@ -152,6 +152,9 @@ document.addEventListener('click', e => { const toggle = e.target.closest('[data
     state.mapMuxSelection = key;
     state.terrain = null;
     state.terrainRequestedKey = key;
+    coverage.disabled = true;
+    coverage.textContent = 'Menghitung Coverage…';
+    coverage.classList.add('is-loading');
     notice('Menghitung prediksi terrain dari data DEM…');
     send('calculate_terrain', state.selected);
     return;

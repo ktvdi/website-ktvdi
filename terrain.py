@@ -333,7 +333,9 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         # Merah juga mencakup piksel di bawah ambang (belum memenuhi penerimaan).
         # Kuning/hijau/biru menunjukkan margin positif yang makin besar.
         margin_db = rx_dbm - float(rx_threshold_dbm)
-        predicted_pixels = np.isfinite(rx_dbm)
+        # Nilai 0 menandakan tidak ada nilai coverage yang perlu divisualisasikan.
+        # Biarkan transparan agar warna dasar peta tetap terlihat.
+        predicted_pixels = np.isfinite(rx_dbm) & (rx_dbm != 0.0)
         accepted_pixels = predicted_pixels & (rx_dbm >= float(rx_threshold_dbm))
         rgba = np.zeros((*rx_dbm.shape, 4), dtype=np.uint8)
         color_bins = [

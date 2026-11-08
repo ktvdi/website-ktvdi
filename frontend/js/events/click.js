@@ -1,49 +1,5 @@
 /* KTVDI frontend events: delegated UI events and Streamlit message lifecycle. */
 'use strict';
-// Leaflet popups stop click propagation. Popup buttons call this directly.
-window.ktvdiRunCoverage = function (key, button) {
-    const parts = String(key || '').split('|');
-    if (parts.length !== 3 || parts.some(part => !part.trim())) {
-        notice('Data pemancar tidak valid untuk menghitung Coverage.');
-        return;
-    }
-    const [provinsi, wilayah, mux] = parts;
-    state.selected = { provinsi, wilayah, mux };
-    state.mapMuxSelection = key;
-    state.terrain = null;
-    state.terrainRequestedKey = key;
-    // Tampilkan batas analisis 200 km segera setelah tombol ditekan.
-    // Lingkaran ini independen dari hasil model sinyal/DEM.
-    if (state.map && window.L && typeof L.circle === 'function') {
-        if (state.mapCoverageCircle) {
-            try {
-                if (state.mapLayerControl) state.mapLayerControl.removeLayer(state.mapCoverageCircle);
-                if (state.map.hasLayer(state.mapCoverageCircle)) state.map.removeLayer(state.mapCoverageCircle);
-            } catch (_) {}
-            state.mapCoverageCircle = null;
-        }
-        const tx = (state.rows || []).find(row => [row.provinsi, row.wilayah, row.mux].join('|') === key);
-        if (tx && hasValidTransmitterCoordinates(tx)) {
-            const center = [mapViewerCoordinate(tx.latitude), mapViewerCoordinate(tx.longitude)];
-            const circle = L.circle(center, {
-                radius: 100000, color: '#2563eb', weight: 2.5,
-                opacity: .95, fillColor: '#3b82f6', fillOpacity: .06,
-                dashArray: '8 6', interactive: false
-            }).addTo(state.map);
-            state.mapCoverageCircle = circle;
-            if (state.mapLayerControl) state.mapLayerControl.addOverlay(circle, 'Batas prediksi 200 km');
-            state.map.fitBounds(circle.getBounds(), { padding: [18, 18], animate: true, duration: .45 });
-        }
-    }
-    if (button) {
-        button.disabled = true;
-        button.textContent = 'Menghitung Coverage…';
-        button.classList.add('is-loading');
-    }
-    notice('Menghitung prediksi terrain dari data DEM…');
-    send('calculate_terrain', state.selected);
-};
-
 // Global delegated navigation and forms.
 document.addEventListener('click', e => { const toggle = e.target.closest('[data-toggle-password]'); if (toggle) {
     const input = toggle.closest('.password-input-wrap')?.querySelector('input[name="password"]');
@@ -189,14 +145,7 @@ document.addEventListener('click', e => { const toggle = e.target.closest('[data
     return;
 } const restore = e.target.closest('[data-restore]'); if (restore && confirm('Pulihkan snapshot data ini?'))
     send('admin_restore', { log_id: restore.dataset.restore }); const user = e.target.closest('[data-user]'); if (user)
-    send('load_user_profile', { username: user.dataset.user }); const coverage = e.target.closest('[data-coverage]'); if (coverage) {
-    window.ktvdiRunCoverage(coverage.dataset.coverage, coverage);
-    return;
-} const terrain = e.target.closest('[data-terrain]'); if (terrain && state.selected) {
-    state.terrainRequestedKey = [state.selected.provinsi, state.selected.wilayah, state.selected.mux].join('|');
-    notice('Menghitung prediksi terrain dari data DEM…');
-    send('calculate_terrain', state.selected);
-} const delCoord = e.target.closest('[data-delete-coordinates]'); if (delCoord && state.selected && confirm('Hapus koordinat pemancar ini?'))
+    send('load_user_profile', { username: user.dataset.user }); const delCoord = e.target.closest('[data-delete-coordinates]'); if (delCoord && state.selected && confirm('Hapus koordinat pemancar ini?'))
     send('delete_coordinates', state.selected); if (e.target.id === 'logout')
     send('logout'); if (e.target.id === 'deleteBroadcast' && confirm('Hapus data MUX ini?'))
     send('delete_broadcast', state.selected); });

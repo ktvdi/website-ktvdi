@@ -54,10 +54,6 @@ if (!window.__ktvdiRestoreRequested) {
         state.measurements = r.measurements;
         showDetail = true;
     }
-    if (r.terrain) {
-        state.terrain = r.terrain;
-        showDetail = true;
-    }
     if (r.users) {
         state.users = r.users;
         state.profile = r.profile || state.profile;
@@ -97,10 +93,10 @@ if (!window.__ktvdiRestoreRequested) {
     if (r.ok && ['add_broadcast', 'edit_broadcast', 'delete_broadcast', 'save_profile', 'add_comment', 'submit_report', 'admin_report_update', 'admin_restore', 'register_verify', 'forgot_reset', 'save_technical', 'save_coordinates', 'delete_coordinates', 'submit_measurement'].includes(r.action)) {
         send('refresh');
     }
-} const keepMapForCoverage = state.page === 'map' && state.result?.action === 'calculate_terrain' && !!state.map; const keepMapForSelection = state.page === 'map' && state.result?.action === 'load_details' && !!state.map; if (keepMapForCoverage) { if (state.result?.ok && state.terrain && typeof window.ktvdiUpdateTerrain === 'function') window.ktvdiUpdateTerrain(); else document.querySelectorAll('[data-coverage]').forEach(button => { button.disabled = false; button.textContent = 'Lihat Coverage'; button.classList.remove('is-loading'); }); } else if (!keepMapForSelection) render(); if (showDetail && state.selected && !keepMapForCoverage) detailsPanel(); if (message)
+} const keepMapForSelection = state.page === 'map' && state.result?.action === 'load_details' && !!state.map; if (!keepMapForSelection) render(); if (showDetail && state.selected) detailsPanel(); if (message)
     notice(message); if (state.viewedProfile && state.page === 'community') {
     const c = document.getElementById('profileCard');
     if (c)
         c.innerHTML = profileCard(state.viewedProfile);
-} if (state.page === 'map' && state.selected && !keepMapForCoverage && !keepMapForSelection) focusTransmitterMap(); });
+} if (state.page === 'map' && state.selected && !keepMapForSelection) focusTransmitterMap(); });
 

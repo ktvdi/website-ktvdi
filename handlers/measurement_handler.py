@@ -25,34 +25,14 @@ from services.map_serializers import (has_map_private_access, serialize_map_meas
 REPORT_STATUSES = ["Menunggu", "Sedang ditinjau", "Selesai", "Ditolak"]
 
 
-# Cache hasil terrain dalam memori proses agar permintaan identik tidak
-# menjalankan ulang perhitungan DEM dan encoding gambar. Cache dibatasi
-# ukuran serta TTL-nya supaya penggunaan memori tetap terkendali.
-_TERRAIN_CACHE = OrderedDict()
-_TERRAIN_CACHE_LOCK = RLock()
-_TERRAIN_CACHE_TTL_SECONDS = 15 * 60
-_TERRAIN_CACHE_MAX_ITEMS = 24
+# Prediksi dihitung ulang pada setiap permintaan; tidak menyimpan hasil terrain
+# dalam cache proses, sesuai pilihan tanpa cache.
 
 def _cached_terrain_layer(tx_for_calc, lat, lon, fallback_erp, fallback_tx, sim_rx, sim_threshold, sim_loss):
     from terrain import _terrain_dem_coverage
     from PIL import Image
     import base64
     from io import BytesIO
-
-    cache_payload = {
-        "transmitter": tx_for_calc, "lat": lat, "lon": lon,
-        "erp": fallback_erp, "tx_height": fallback_tx,
-        "rx_height": sim_rx, "threshold": sim_threshold, "loss": sim_loss,
-    }
-    cache_key = hashlib.sha256(json.dumps(cache_payload, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")).hexdigest()
-    now = time.monotonic()
-    with _TERRAIN_CACHE_LOCK:
-        cached = _TERRAIN_CACHE.get(cache_key)
-        if cached and now - cached[0] < _TERRAIN_CACHE_TTL_SECONDS:
-            _TERRAIN_CACHE.move_to_end(cache_key)
-            return dict(cached[1])
-        if cached:
-            _TERRAIN_CACHE.pop(cache_key, None)
 
     layers = _terrain_dem_coverage(
         [{**tx_for_calc, "latitude": lat, "longitude": lon}], lat, lon,
@@ -73,20 +53,20 @@ def _cached_terrain_layer(tx_for_calc, lat, lon, fallback_erp, fallback_tx, sim_
         raise RuntimeError("Batas geografis coverage tidak valid.")
     if not (bounds[0][0] < bounds[1][0] and bounds[0][1] < bounds[1][1]):
         raise RuntimeError("Batas geografis coverage tidak memiliki rentang yang valid.")
-    # Jangan gagalkan seluruh hasil ketika tidak ada piksel yang lolos ambang.
-    # Raster transparan tetap berguna: batas lingkaran 200 km ditampilkan
-    # terpisah dari lapisan sinyal, sehingga area tanpa sinyal tidak disamarkan.
+    # Tetap kirim PNG untuk piksel yang diprediksi lemah; hanya area tanpa
+    # data DEM yang transparan. Kode lama menampilkan RGBA melalui Folium.
+    if not bool((image_array[..., 3] > 0).any()):
+        raise RuntimeError(
+            "Raster DEM tidak menghasilkan piksel visual. Periksa data elevasi "
+            "dan koordinat pemancar; tidak membuat coverage pengganti."
+        )
     image = Image.fromarray(image_array.astype("uint8", copy=False), mode="RGBA")
     buf = BytesIO()
     image.save(buf, format="PNG", optimize=True)
     layer_data = {k: v for k, v in layer.items() if k != "image"}
+    layer_data["coverage_engine"] = "legacy-dem-mapzen-knife-edge-no-cache-v1"
     layer_data["image_data_uri"] = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
 
-    with _TERRAIN_CACHE_LOCK:
-        _TERRAIN_CACHE[cache_key] = (now, dict(layer_data))
-        _TERRAIN_CACHE.move_to_end(cache_key)
-        while len(_TERRAIN_CACHE) > _TERRAIN_CACHE_MAX_ITEMS:
-            _TERRAIN_CACHE.popitem(last=False)
     return layer_data
 
 

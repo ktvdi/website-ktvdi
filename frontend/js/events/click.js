@@ -1,7 +1,19 @@
 /* KTVDI frontend events: delegated UI events and Streamlit message lifecycle. */
 'use strict';
 // Global delegated navigation and forms.
-document.addEventListener('click', e => { const showTechnical = e.target.closest('[data-show-technical]'); if (showTechnical) {
+document.addEventListener('click', e => { const coverage = e.target.closest('[data-coverage]'); if (coverage) {
+    const [provinsi, wilayah, mux] = coverage.dataset.coverage.split('|');
+    state.selected = { provinsi, wilayah, mux };
+    state.mapMuxSelection = coverage.dataset.coverage;
+    state.terrain = null;
+    state.terrainRequestedKey = coverage.dataset.coverage;
+    coverage.disabled = true;
+    coverage.textContent = 'Menghitung…';
+    coverage.classList.add('is-loading');
+    notice('Menghitung prediksi coverage berdasarkan kontur terrain dan data pemancar…');
+    send('calculate_terrain', state.selected);
+    return;
+} const showTechnical = e.target.closest('[data-show-technical]'); if (showTechnical) {
     const [provinsi, wilayah, mux] = showTechnical.dataset.showTechnical.split('|');
     state.selected = { provinsi, wilayah, mux };
     state.mapMuxSelection = showTechnical.dataset.showTechnical;

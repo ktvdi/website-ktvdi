@@ -1,38 +1,6 @@
 /* KTVDI views: page rendering dispatcher and page templates. */
 'use strict';
 
-function terrainSimulationDefaults(row) {
-    const detail = row?.detail || {};
-    const positive = value => {
-        const n = Number(value);
-        return Number.isFinite(n) && n > 0 ? n : null;
-    };
-    const finite = value => {
-        if (value === null || value === undefined || String(value).trim() === '') return null;
-        const n = Number(value);
-        return Number.isFinite(n) ? n : null;
-    };
-    const actualErp = positive(detail.erp_w);
-    const txPower = positive(detail.tx_power_w);
-    const gain = finite(detail.antenna_gain_dbd);
-    const feeder = finite(detail.feeder_loss_db);
-    const txHeight = positive(detail.tx_height_m);
-    let erp = actualErp;
-    let erpSource = actualErp ? 'data teknis aktual' : 'asumsi';
-    if (!erp && txPower) {
-        erp = txPower * Math.pow(10, ((gain ?? 10) - (feeder ?? 2)) / 10);
-        erpSource = gain !== null && feeder !== null
-            ? 'estimasi dari data teknis pemancar'
-            : 'estimasi; gain/rugi feeder sebagian diasumsikan';
-    }
-    return {
-        erp: erp ?? 1000, erpSource,
-        txHeight: txHeight ?? 30,
-        txHeightSource: txHeight ? 'data teknis aktual' : 'asumsi',
-        rxHeight: 10, rxThreshold: -90, extraLoss: 4
-    };
-}
-
 function render() {
     nav();
     if (state.map) {
@@ -57,14 +25,8 @@ function render() {
         const areas = [...new Set(located.filter(r => (!state.mapProvince || r.provinsi === state.mapProvince)).map(r => r.wilayah).filter(Boolean))].sort();
         const muxRows = located.filter(r => (!state.mapProvince || r.provinsi === state.mapProvince) && (!state.mapArea || r.wilayah === state.mapArea));
         const muxOptions = muxRows.map(r => ({ value: [r.provinsi, r.wilayah, r.mux].join('|'), label: `${r.mux} — ${r.wilayah}` }));
-        const selectedRow = state.selected ? (located.find(r => r.provinsi === state.selected.provinsi && r.wilayah === state.selected.wilayah && r.mux === state.selected.mux) || {}) : {};
-        const simDefaults = terrainSimulationDefaults({ ...selectedRow, detail: state.detail || selectedRow.detail || {} });
-        const simErpLabel = !auth() ? `ERP simulasi (W) · ${simDefaults.erpSource}` : 'ERP simulasi (W)';
-        const simTxLabel = !auth() ? `Tinggi antena TX simulasi (m) · ${simDefaults.txHeightSource}` : 'Tinggi antena TX simulasi (m)';
-        const simOtherSource = !auth() ? 'asumsi' : '';
         const publicMapGuide = !auth() ? `<div class="map-quick-guide muted" role="note"><strong>Panduan singkat:</strong> pilih provinsi, wilayah layanan, lalu MUX untuk memusatkan peta pada pemancar. Gunakan Reset filter untuk melihat semua titik. Pilih marker untuk melihat ringkasan pemancar.</div>` : '';
-        const publicSimulationGuide = !auth() ? `<div class="simulation-help muted" role="note"><strong>Cara membaca simulasi:</strong><ol><li>Pilih MUX bertitik pada filter di atas.</li><li>Periksa nilai awal: label “data teknis aktual” berarti berasal dari data yang tersedia; label “asumsi” berarti nilai perkiraan untuk melengkapi simulasi.</li><li>Ubah angka jika ingin menguji kondisi lain, lalu tekan tombol hitung ulang.</li></ol><span>Hasil dalam dBm adalah perkiraan tingkat sinyal pada lokasi penerima, bukan kepastian bahwa siaran dapat diterima. Simulasi tidak mengubah atau menyimpan data pemancar.</span></div>` : '';
-        app.innerHTML = `<section class="panel map-panel"><h2><i data-lucide="map" aria-hidden="true"></i> Peta Pemancar & Kualitas Sinyal TV Digital</h2><p class="muted">Pilih Provinsi dan Wilayah Layanan, lalu pilih MUX bertitik. Prediksi terrain hanya dihitung setelah Anda memilih MUX melalui filter. Klik marker hanya untuk melihat informasi pemancar.</p><div class="map-filterbar"><label>Provinsi<select id="mapProvinceFilter"><option value="">Semua provinsi</option>${options(provinces, state.mapProvince)}</select></label><label>Wilayah Layanan<select id="mapAreaFilter"><option value="">Semua wilayah</option>${options(areas, state.mapArea)}</select></label><label>Pilih MUX bertitik<select id="mapMuxFilter"><option value="">Pilih MUX pemancar</option>${muxOptions.map(o => `<option value="${attr(o.value)}" ${o.value === state.mapMuxSelection ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label><button type="button" class="small-action" id="resetMapFilters">Reset filter</button></div>${publicMapGuide}<div class="map-container"><div id="map" role="application" aria-label="Peta interaktif lokasi pemancar TV digital" style="height:600px;border-radius:14px;z-index:1"></div><button type="button" class="map-gps-button" id="mapLocate" title="Lokasi saya" aria-label="Lokasi saya"><i data-lucide="crosshair" aria-hidden="true"></i></button></div>${located.length ? '' : '<div class="result" role="status">Belum ada titik pemancar dengan koordinat valid. Data siaran tetap tersedia di halaman Database Siaran.</div>'}<div class="map-status"><span id="mapCount"></span><span id="mapCoordinates">Koordinat: —</span></div><div class="map-legend" aria-label="Legenda peta"><span><i class="legend-transmitter"></i> Pemancar TV digital</span><span><i class="legend-measurement good"></i> Kualitas ≥70%</span><span><i class="legend-measurement medium"></i> Kualitas 40–69%</span><span><i class="legend-measurement poor"></i> Kualitas &lt;40%</span></div><div id="mapLastUpdated" class="map-last-updated">Update titik pemancar terakhir: ${esc(state.mapLastUpdated || "Belum ada riwayat perubahan")}</div><p class="muted map-disclaimer">GPS memerlukan izin lokasi browser dan HTTPS. Prediksi terrain merupakan estimasi berbasis DEM, bukan jaminan penerimaan siaran.</p><section class="terrain-simulation"><h3><i data-lucide="compass" aria-hidden="true"></i> Form Simulasi Prediksi Terrain</h3><p class="muted">Pilih MUX melalui filter untuk menjalankan prediksi terrain menggunakan data teknis pemancar yang tersimpan (atau nilai asumsi jika belum tersedia). Ubah parameter di bawah hanya jika ingin mencoba simulasi alternatif. Nilai simulasi tidak disimpan ke database.</p>${publicSimulationGuide}<form id="terrainSimulationForm" class="simulation-grid">${field(simErpLabel, 'sim_erp_w', 'Default dari data/asumsi', 'number', String(simDefaults.erp))}${field(simTxLabel, 'sim_tx_height_m', 'Contoh 30', 'number', String(simDefaults.txHeight))}${field(`Tinggi antena penerima (m)${simOtherSource ? ' · asumsi' : ''}`, 'sim_rx_height_m', 'Contoh 10', 'number', String(simDefaults.rxHeight))}${field(`Ambang penerimaan (dBm)${simOtherSource ? ' · asumsi' : ''}`, 'sim_rx_threshold_dbm', 'Contoh -90', 'number', String(simDefaults.rxThreshold))}${field(`Rugi tambahan (dB)${simOtherSource ? ' · asumsi' : ''}`, 'sim_extra_loss_db', 'Contoh 4', 'number', String(simDefaults.extraLoss))}<button class="action" type="submit" ${state.selected ? '' : 'disabled'}>Terapkan simulasi & hitung ulang</button></form><p id="terrainSimulationStatus" class="muted">${state.selected ? (state.terrain ? 'Prediksi terrain selesai. Ubah parameter jika ingin menghitung simulasi alternatif.' : 'Prediksi terrain sedang diproses atau menunggu hasil.') : 'Pilih MUX melalui filter di atas untuk menjalankan prediksi terrain.'}</p>${state.terrain ? `<div class="result"><b>Hasil prediksi:</b> ${esc(state.terrain.min_dbm ?? '—')} hingga ${esc(state.terrain.max_dbm ?? '—')} dBm · ${esc(state.terrain.prediction_data_status || 'Estimasi')}</div>` : ''}</section></section>`;
+        app.innerHTML = `<section class="panel map-panel"><h2><i data-lucide="map" aria-hidden="true"></i> Peta Pemancar & Kualitas Sinyal TV Digital</h2><p class="muted">Pilih Provinsi dan Wilayah Layanan, lalu pilih MUX bertitik. Klik marker untuk membuka informasi pemancar. Perhitungan terrain dijalankan hanya saat tombol “Lihat Coverage” ditekan pada bagian bawah popup.</p><div class="map-filterbar"><label>Provinsi<select id="mapProvinceFilter"><option value="">Semua provinsi</option>${options(provinces, state.mapProvince)}</select></label><label>Wilayah Layanan<select id="mapAreaFilter"><option value="">Semua wilayah</option>${options(areas, state.mapArea)}</select></label><label>Pilih MUX bertitik<select id="mapMuxFilter"><option value="">Pilih MUX pemancar</option>${muxOptions.map(o => `<option value="${attr(o.value)}" ${o.value === state.mapMuxSelection ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label><button type="button" class="small-action" id="resetMapFilters">Reset filter</button></div>${publicMapGuide}<div class="map-container"><div id="map" role="application" aria-label="Peta interaktif lokasi pemancar TV digital" style="height:600px;border-radius:14px;z-index:1"></div><button type="button" class="map-gps-button" id="mapLocate" title="Lokasi saya" aria-label="Lokasi saya"><i data-lucide="crosshair" aria-hidden="true"></i></button></div>${located.length ? '' : '<div class="result" role="status">Belum ada titik pemancar dengan koordinat valid. Data siaran tetap tersedia di halaman Database Siaran.</div>'}<div class="map-status"><span id="mapCount"></span><span id="mapCoordinates">Koordinat: —</span></div><div class="map-legend" aria-label="Legenda peta"><span><i class="legend-transmitter"></i> Pemancar TV digital</span><span><i class="legend-measurement good"></i> Kualitas ≥70%</span><span><i class="legend-measurement medium"></i> Kualitas 40–69%</span><span><i class="legend-measurement poor"></i> Kualitas &lt;40%</span></div><div id="mapLastUpdated" class="map-last-updated">Update titik pemancar terakhir: ${esc(state.mapLastUpdated || "Belum ada riwayat perubahan")}</div><p class="muted map-disclaimer">GPS memerlukan izin lokasi browser dan HTTPS. Gunakan tombol “Lihat Coverage” pada bagian bawah popup informasi pemancar untuk menjalankan prediksi terrain berbasis DEM. Hasil merupakan estimasi, bukan jaminan penerimaan siaran.</p></section>`;
     }
     else if (state.page === 'login')
         app.innerHTML = renderLoginPage();

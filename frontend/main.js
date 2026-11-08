@@ -13,6 +13,10 @@
     './js/views/pages/broadcast.js',
     './js/views/pages/community.js',
     './js/views/render.js',
+    './js/map/map-utils.js',
+    './js/map/map-markers.js',
+    './js/map/map-coverage.js',
+    './js/map/map-init.js',
     './js/maps.js',
     './js/events.js'
   ];

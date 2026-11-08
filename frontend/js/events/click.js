@@ -1,5 +1,26 @@
 /* KTVDI frontend events: delegated UI events and Streamlit message lifecycle. */
 'use strict';
+// Leaflet popups stop click propagation. Popup buttons call this directly.
+window.ktvdiRunCoverage = function (key, button) {
+    const parts = String(key || '').split('|');
+    if (parts.length !== 3 || parts.some(part => !part.trim())) {
+        notice('Data pemancar tidak valid untuk menghitung Coverage.');
+        return;
+    }
+    const [provinsi, wilayah, mux] = parts;
+    state.selected = { provinsi, wilayah, mux };
+    state.mapMuxSelection = key;
+    state.terrain = null;
+    state.terrainRequestedKey = key;
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Menghitung Coverage…';
+        button.classList.add('is-loading');
+    }
+    notice('Menghitung prediksi terrain dari data DEM…');
+    send('calculate_terrain', state.selected);
+};
+
 // Global delegated navigation and forms.
 document.addEventListener('click', e => { const toggle = e.target.closest('[data-toggle-password]'); if (toggle) {
     const input = toggle.closest('.password-input-wrap')?.querySelector('input[name="password"]');
@@ -146,17 +167,7 @@ document.addEventListener('click', e => { const toggle = e.target.closest('[data
 } const restore = e.target.closest('[data-restore]'); if (restore && confirm('Pulihkan snapshot data ini?'))
     send('admin_restore', { log_id: restore.dataset.restore }); const user = e.target.closest('[data-user]'); if (user)
     send('load_user_profile', { username: user.dataset.user }); const coverage = e.target.closest('[data-coverage]'); if (coverage) {
-    const key = coverage.dataset.coverage;
-    const [provinsi, wilayah, mux] = key.split('|');
-    state.selected = { provinsi, wilayah, mux };
-    state.mapMuxSelection = key;
-    state.terrain = null;
-    state.terrainRequestedKey = key;
-    coverage.disabled = true;
-    coverage.textContent = 'Menghitung Coverage…';
-    coverage.classList.add('is-loading');
-    notice('Menghitung prediksi terrain dari data DEM…');
-    send('calculate_terrain', state.selected);
+    window.ktvdiRunCoverage(coverage.dataset.coverage, coverage);
     return;
 } const terrain = e.target.closest('[data-terrain]'); if (terrain && state.selected) {
     state.terrainRequestedKey = [state.selected.provinsi, state.selected.wilayah, state.selected.mux].join('|');

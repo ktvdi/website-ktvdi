@@ -49,7 +49,7 @@ window.ktvdiUpdateTerrain = function () {
             if (state.map.hasLayer(state.mapTerrainLayer)) state.map.removeLayer(state.mapTerrainLayer);
         } catch (_) {}
     }
-    const layer = L.imageOverlay(terrain.image_data_uri, terrain.bounds, { opacity: .82, interactive: false });
+    const layer = L.imageOverlay(terrain.image_data_uri, terrain.bounds, { opacity: .82, interactive: false, pane: 'overlayPane' });
     state.mapTerrainLayer = layer;
     layer.once('error', () => {
         resetCoverageButtons();

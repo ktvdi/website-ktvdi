@@ -3,6 +3,11 @@ import base64
 import math
 import random
 import re
+import json
+import hashlib
+import time
+from collections import OrderedDict
+from threading import RLock
 from datetime import datetime
 from io import BytesIO
 from typing import Any
@@ -18,6 +23,57 @@ from services.community import _public_user, _all_reports, _all_users_public, _p
 from services.map_serializers import (has_map_private_access, serialize_map_measurement, serialize_map_detail, serialize_map_response)
 
 REPORT_STATUSES = ["Menunggu", "Sedang ditinjau", "Selesai", "Ditolak"]
+
+
+# Cache hasil terrain dalam memori proses agar permintaan identik tidak
+# menjalankan ulang perhitungan DEM dan encoding gambar. Cache dibatasi
+# ukuran serta TTL-nya supaya penggunaan memori tetap terkendali.
+_TERRAIN_CACHE = OrderedDict()
+_TERRAIN_CACHE_LOCK = RLock()
+_TERRAIN_CACHE_TTL_SECONDS = 15 * 60
+_TERRAIN_CACHE_MAX_ITEMS = 24
+
+def _cached_terrain_layer(tx_for_calc, lat, lon, fallback_erp, fallback_tx, sim_rx, sim_threshold, sim_loss):
+    from terrain import _terrain_dem_coverage
+    from PIL import Image
+    import base64
+    from io import BytesIO
+
+    cache_payload = {
+        "transmitter": tx_for_calc, "lat": lat, "lon": lon,
+        "erp": fallback_erp, "tx_height": fallback_tx,
+        "rx_height": sim_rx, "threshold": sim_threshold, "loss": sim_loss,
+    }
+    cache_key = hashlib.sha256(json.dumps(cache_payload, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")).hexdigest()
+    now = time.monotonic()
+    with _TERRAIN_CACHE_LOCK:
+        cached = _TERRAIN_CACHE.get(cache_key)
+        if cached and now - cached[0] < _TERRAIN_CACHE_TTL_SECONDS:
+            _TERRAIN_CACHE.move_to_end(cache_key)
+            return dict(cached[1])
+        if cached:
+            _TERRAIN_CACHE.pop(cache_key, None)
+
+    layers = _terrain_dem_coverage(
+        [{**tx_for_calc, "latitude": lat, "longitude": lon}], lat, lon,
+        erp_watt=fallback_erp, tx_height_m=fallback_tx, rx_height_m=sim_rx,
+        rx_threshold_dbm=sim_threshold, extra_loss_db=sim_loss, max_transmitters=1,
+    )
+    if not layers:
+        raise ValueError("Tidak ada hasil prediksi terrain.")
+    layer = layers[0]
+    image = Image.fromarray(layer["image"], mode="RGBA")
+    buf = BytesIO()
+    image.save(buf, format="PNG", optimize=True)
+    layer_data = {k: v for k, v in layer.items() if k != "image"}
+    layer_data["image_data_uri"] = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+    with _TERRAIN_CACHE_LOCK:
+        _TERRAIN_CACHE[cache_key] = (now, dict(layer_data))
+        _TERRAIN_CACHE.move_to_end(cache_key)
+        while len(_TERRAIN_CACHE) > _TERRAIN_CACHE_MAX_ITEMS:
+            _TERRAIN_CACHE.popitem(last=False)
+    return layer_data
 
 
 def handle_measurement_handler(action: str, event: dict[str, Any], session: dict[str, Any], secrets=None):
@@ -54,7 +110,7 @@ def handle_measurement_handler(action: str, event: dict[str, Any], session: dict
                 if not has_map_private_access(session):
                     lat=round(lat, 2); lon=round(lon, 2)
                     row["latitude"], row["longitude"] = lat, lon
-                from terrain import _terrain_dem_coverage, _uhf_frequency_mhz
+                from terrain import _uhf_frequency_mhz
                 if not _uhf_frequency_mhz(mux): raise ValueError("Prediksi terrain memerlukan kanal UHF 21–48.")
                 # Tanpa parameter simulasi, gunakan data teknis pemancar yang tersimpan.
                 # Nilai fallback hanya dipakai oleh model bila data teknis belum tersedia.
@@ -82,16 +138,10 @@ def handle_measurement_handler(action: str, event: dict[str, Any], session: dict
                     tx_for_calc=row
                     fallback_erp=1000.0
                     fallback_tx=30.0
-                layers=_terrain_dem_coverage([{**tx_for_calc,"latitude":lat,"longitude":lon}],lat,lon,
-                    erp_watt=fallback_erp,tx_height_m=fallback_tx,rx_height_m=sim_rx,
-                    rx_threshold_dbm=sim_threshold,extra_loss_db=sim_loss,max_transmitters=1)
-                if not layers: raise ValueError("Tidak ada hasil prediksi terrain.")
-                from io import BytesIO
-                import base64
-                from PIL import Image
-                layer=layers[0]; image=Image.fromarray(layer["image"],mode="RGBA"); buf=BytesIO(); image.save(buf,format="PNG",optimize=True)
-                layer_data={k:v for k,v in layer.items() if k!="image"}
-                layer_data["image_data_uri"]="data:image/png;base64,"+base64.b64encode(buf.getvalue()).decode("ascii")
+                layer_data = _cached_terrain_layer(
+                    tx_for_calc, lat, lon, fallback_erp, fallback_tx,
+                    sim_rx, sim_threshold, sim_loss,
+                )
                 return {"ok":True,"terrain":layer_data,"message":"Prediksi terrain selesai. Hasil bersifat indikatif, bukan jaminan penerimaan sinyal."}
     if action=="load_measurements":
                 authenticated=has_map_private_access(session)

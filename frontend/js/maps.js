@@ -17,20 +17,74 @@ function mapViewerIdentity(item) {
     return item.display_name || 'Kontributor komunitas';
 }
 function mapFilteredRows() { return mapLocatedRows().filter(r => (!state.mapProvince || r.provinsi === state.mapProvince) && (!state.mapArea || r.wilayah === state.mapArea)); }
-function drawMapLayers() { if (!state.map)
-    return; const m = state.map; if (state.mapTransmitters)
-    m.removeLayer(state.mapTransmitters); if (state.mapMeasurements)
-    m.removeLayer(state.mapMeasurements); state.mapTransmitters = L.layerGroup(); state.mapMeasurements = L.layerGroup(); state.mapMarkerIndex = {}; const rows = mapFilteredRows(); rows.forEach(r => { const key = [r.provinsi, r.wilayah, r.mux].join('|'), selected = state.selected && key === [state.selected.provinsi, state.selected.wilayah, state.selected.mux].join('|'); const channels = (r.siaran || []).length ? (r.siaran || []).map(x => `<li>${esc(x)}</li>`).join('') : '<li>Belum ada data kanal</li>'; const popup = `<div class="transmitter-popup"><div class="popup-kicker">INFORMASI PEMANCAR</div><b>Wilayah Layanan</b><div>${esc(r.wilayah || '—')}, ${esc(r.provinsi || '—')}</div><b>Nama MUX</b><div>${esc(r.mux || '—')}</div><b>Daftar Kanal</b><ul>${channels}</ul>${selected && state.terrain ? `<div class="popup-terrain">Coverage tersedia · ${esc(state.terrain.min_dbm ?? '—')} hingga ${esc(state.terrain.max_dbm ?? '—')} dBm</div>` : ''}<button type="button" class="action popup-coverage-button" data-coverage="${attr(key)}">Lihat Coverage</button></div>`; const marker = L.marker([mapViewerCoordinate(r.latitude), mapViewerCoordinate(r.longitude)], { title: rowTitle(r), alt: rowTitle(r), keyboard: true }); marker.bindPopup(popup, { maxWidth: 1200 }); marker.on('click', () => window.ktvdiSelect(key, false)); if (selected)
-    marker.setZIndexOffset(1000); marker.addTo(state.mapTransmitters); state.mapMarkerIndex[key] = marker; }); state.mapTransmitters.addTo(m); (state.measurements || []).filter(x => (!state.mapProvince || x.provinsi === state.mapProvince) && (!state.mapArea || x.wilayah === state.mapArea) && (!state.selected || (x.provinsi === state.selected.provinsi && x.wilayah === state.selected.wilayah && x.mux === state.selected.mux))).forEach(x => { const lat = Number(x.latitude), lon = Number(x.longitude); if (!Number.isFinite(lat) || !Number.isFinite(lon))
-    return; const q = Number(x.quality), color = q >= 70 ? '#16a34a' : q >= 40 ? '#eab308' : '#dc2626'; L.circleMarker([mapViewerCoordinate(lat), mapViewerCoordinate(lon)], { radius: 7, color, fillColor: color, fillOpacity: .75, weight: 2 }).bindPopup(`<b>Pengukuran komunitas</b><br>${esc(mapViewerIdentity(x))}<br>Strength ${esc(x.strength)}% · Quality ${esc(x.quality)}%<br>SNR ${esc(x.snr ?? '—')} dB · BER ${esc(x.ber ?? '—')}<br>${esc(x.timestamp)}`).addTo(state.mapMeasurements); }); state.mapMeasurements.addTo(m); const count = document.getElementById('mapCount'); if (count)
-    count.textContent = `${rows.length} titik pemancar ditampilkan · ${state.selected ? '1 pemancar dipilih' : 'pilih marker atau MUX'}`; }
+function drawMapLayers() {
+    if (!state.map) return;
+    const map = state.map;
+    if (state.mapDrawToken) state.mapDrawToken++;
+    const drawToken = state.mapDrawToken = (state.mapDrawToken || 0) + 1;
+    if (state.mapTransmitters) map.removeLayer(state.mapTransmitters);
+    if (state.mapMeasurements) map.removeLayer(state.mapMeasurements);
+    state.mapTransmitters = L.layerGroup().addTo(map);
+    state.mapMeasurements = L.layerGroup().addTo(map);
+    state.mapMarkerIndex = {};
+    const rows = mapFilteredRows();
+    const addMarkerBatch = (start) => {
+        if (drawToken !== state.mapDrawToken || !state.map) return;
+        const end = Math.min(start + 80, rows.length);
+        for (let i = start; i < end; i++) {
+            const r = rows[i];
+            const key = [r.provinsi, r.wilayah, r.mux].join('|');
+            const selected = state.selected && key === [state.selected.provinsi, state.selected.wilayah, state.selected.mux].join('|');
+            const channels = (r.siaran || []).length ? (r.siaran || []).map(x => `<li>${esc(x)}</li>`).join('') : '<li>Belum ada data kanal</li>';
+            const popup = `<div class="transmitter-popup"><div class="popup-kicker">INFORMASI PEMANCAR</div><b>Wilayah Layanan</b><div>${esc(r.wilayah || '—')}, ${esc(r.provinsi || '—')}</div><b>Nama MUX</b><div>${esc(r.mux || '—')}</div><b>Daftar Kanal</b><ul>${channels}</ul>${selected && state.terrain ? `<div class="popup-terrain">Coverage tersedia · ${esc(state.terrain.min_dbm ?? '—')} hingga ${esc(state.terrain.max_dbm ?? '—')} dBm</div>` : ''}<button type="button" class="action popup-coverage-button" data-coverage="${attr(key)}">Lihat Coverage</button></div>`;
+            const marker = L.marker([mapViewerCoordinate(r.latitude), mapViewerCoordinate(r.longitude)], { title: rowTitle(r), alt: rowTitle(r), keyboard: true });
+            marker.bindPopup(popup, { maxWidth: 1200 });
+            marker.on('click', () => window.ktvdiSelect(key, false));
+            if (selected) marker.setZIndexOffset(1000);
+            marker.addTo(state.mapTransmitters);
+            state.mapMarkerIndex[key] = marker;
+        }
+        if (end < rows.length) requestAnimationFrame(() => addMarkerBatch(end));
+        else addMeasurementBatch(0);
+    };
+    const measurements = (state.measurements || []).filter(x => (!state.mapProvince || x.provinsi === state.mapProvince) && (!state.mapArea || x.wilayah === state.mapArea) && (!state.selected || (x.provinsi === state.selected.provinsi && x.wilayah === state.selected.wilayah && x.mux === state.selected.mux)));
+    const addMeasurementBatch = (start) => {
+        if (drawToken !== state.mapDrawToken || !state.map) return;
+        const end = Math.min(start + 100, measurements.length);
+        for (let i = start; i < end; i++) {
+            const x = measurements[i], lat = Number(x.latitude), lon = Number(x.longitude);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+            const q = Number(x.quality), color = q >= 70 ? '#16a34a' : q >= 40 ? '#eab308' : '#dc2626';
+            L.circleMarker([mapViewerCoordinate(lat), mapViewerCoordinate(lon)], { radius: 7, color, fillColor: color, fillOpacity: .75, weight: 2 }).bindPopup(`<b>Pengukuran komunitas</b><br>${esc(mapViewerIdentity(x))}<br>Strength ${esc(x.strength)}% · Quality ${esc(x.quality)}%<br>SNR ${esc(x.snr ?? '—')} dB · BER ${esc(x.ber ?? '—')}<br>${esc(x.timestamp)}`).addTo(state.mapMeasurements);
+        }
+        if (end < measurements.length) requestAnimationFrame(() => addMeasurementBatch(end));
+    };
+    const count = document.getElementById('mapCount');
+    if (count) count.textContent = `${rows.length} titik pemancar ditampilkan · ${state.selected ? '1 pemancar dipilih' : 'pilih marker atau MUX'}`;
+    addMarkerBatch(0);
+}
+
+window.ktvdiUpdateTerrain = function () {
+    if (!state.map || !state.terrain || !state.terrain.image_data_uri || !Array.isArray(state.terrain.bounds)) return;
+    if (state.mapTerrainLayer) {
+        try { if (state.mapLayerControl) state.mapLayerControl.removeLayer(state.mapTerrainLayer); if (state.map.hasLayer(state.mapTerrainLayer)) state.map.removeLayer(state.mapTerrainLayer); } catch (_) {}
+    }
+    const layer = L.imageOverlay(state.terrain.image_data_uri, state.terrain.bounds, { opacity: 0, interactive: false });
+    state.mapTerrainLayer = layer;
+    layer.addTo(state.map);
+    if (state.mapLayerControl) state.mapLayerControl.addOverlay(layer, 'Prediksi terrain DEM');
+    requestAnimationFrame(() => { if (layer._image) layer._image.style.transition = 'opacity 320ms ease'; layer.setOpacity(.82); });
+    state.map.fitBounds(state.terrain.bounds, { padding: [18, 18], animate: true, duration: .45 });
+    document.querySelectorAll('[data-coverage]').forEach(button => { button.disabled = false; button.textContent = 'Lihat Coverage'; button.classList.remove('is-loading'); });
+};
 function initMap() { const el = document.getElementById('map'); if (!el || !window.L)
-    return; state.map = L.map(el, { preferCanvas: true }).setView([-2.5, 118], 5); const street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(state.map); const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles © Esri' }); const baseLayers = { 'Peta jalan': street, 'Satelit': satellite }; const overlays = {}; if (state.terrain?.image_data_uri && Array.isArray(state.terrain.bounds)) {
+    return; if (state.map) { try { state.map.off(); state.map.remove(); } catch (_) {} state.map = null; state.mapTerrainLayer = null; state.mapLayerControl = null; } state.map = L.map(el, { preferCanvas: true, fadeAnimation: true, markerZoomAnimation: true }).setView([-2.5, 118], 5); const street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(state.map); const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles © Esri' }); const baseLayers = { 'Peta jalan': street, 'Satelit': satellite }; const overlays = {}; if (state.terrain?.image_data_uri && Array.isArray(state.terrain.bounds)) {
     const terrain = L.imageOverlay(state.terrain.image_data_uri, state.terrain.bounds, { opacity: .82, interactive: false });
     overlays['Prediksi terrain DEM'] = terrain;
+    state.mapTerrainLayer = terrain;
     terrain.addTo(state.map);
     state.map.fitBounds(state.terrain.bounds, { padding: [18, 18] });
-} L.control.layers(baseLayers, overlays, { position: 'topright', collapsed: false }).addTo(state.map); L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(state.map); drawMapLayers(); if (!state.terrain && state.selected) {
+} state.mapLayerControl = L.control.layers(baseLayers, overlays, { position: 'topright', collapsed: true }).addTo(state.map); L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(state.map); drawMapLayers(); if (!state.terrain && state.selected) {
     const r = state.rows.find(x => x.provinsi === state.selected.provinsi && x.wilayah === state.selected.wilayah && x.mux === state.selected.mux);
     if (hasValidTransmitterCoordinates(r))
         state.map.setView([mapViewerCoordinate(r.latitude), mapViewerCoordinate(r.longitude)], auth() ? 11 : 8);
@@ -67,7 +121,6 @@ function initPointMap() { const el = document.getElementById('pointMap'); if (!e
         return;
     } gps.disabled = true; gps.textContent = 'Mencari GPS…'; navigator.geolocation.getCurrentPosition(pos => { map.setView([pos.coords.latitude, pos.coords.longitude], 16); gps.disabled = false; gps.textContent = '<i data-lucide="target" aria-hidden="true"></i> Gunakan GPS saya'; }, err => { notice(`GPS gagal: ${err.message}`); gps.disabled = false; gps.textContent = '<i data-lucide="target" aria-hidden="true"></i> Gunakan GPS saya'; }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }); }); setTimeout(() => map.invalidateSize(), 120); }
 window.ktvdiSelect = (key) => { const [provinsi, wilayah, mux] = key.split('|'); state.selected = { provinsi, wilayah, mux }; state.mapMuxSelection = key; state.terrain = null; state.terrainRequestedKey = null; state.detail = null; state.comments = []; if (state.map) {
-    drawMapLayers();
     const r = state.rows.find(x => x.provinsi === provinsi && x.wilayah === wilayah && x.mux === mux);
     if (hasValidTransmitterCoordinates(r))
         state.map.setView([mapViewerCoordinate(r.latitude), mapViewerCoordinate(r.longitude)], auth() ? 11 : 8);

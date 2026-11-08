@@ -25,10 +25,7 @@ from services.map_serializers import (has_map_private_access, serialize_map_meas
 REPORT_STATUSES = ["Menunggu", "Sedang ditinjau", "Selesai", "Ditolak"]
 
 
-# Prediksi dihitung ulang pada setiap permintaan; tidak menyimpan hasil terrain
-# dalam cache proses, sesuai pilihan tanpa cache.
-
-def _cached_terrain_layer(tx_for_calc, lat, lon, fallback_erp, fallback_tx, sim_rx, sim_threshold, sim_loss):
+def _calculate_terrain_layer(tx_for_calc, lat, lon, fallback_erp, fallback_tx, sim_rx, sim_threshold, sim_loss):
     from terrain import _terrain_dem_coverage
     from PIL import Image
     import base64
@@ -64,7 +61,7 @@ def _cached_terrain_layer(tx_for_calc, lat, lon, fallback_erp, fallback_tx, sim_
     buf = BytesIO()
     image.save(buf, format="PNG", optimize=True)
     layer_data = {k: v for k, v in layer.items() if k != "image"}
-    layer_data["coverage_engine"] = "legacy-dem-mapzen-knife-edge-no-cache-v1"
+    layer_data["coverage_engine"] = "legacy-dem-mapzen-knife-edge-no-cache"
     layer_data["image_data_uri"] = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
 
     return layer_data
@@ -132,7 +129,7 @@ def handle_measurement_handler(action: str, event: dict[str, Any], session: dict
                     tx_for_calc=row
                     fallback_erp=1000.0
                     fallback_tx=30.0
-                layer_data = _cached_terrain_layer(
+                layer_data = _calculate_terrain_layer(
                     tx_for_calc, lat, lon, fallback_erp, fallback_tx,
                     sim_rx, sim_threshold, sim_loss,
                 )

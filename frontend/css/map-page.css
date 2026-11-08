@@ -76,3 +76,11 @@
 .technical-grid span{font-size:.8rem;color:#64748b}
 .technical-grid b{overflow-wrap:anywhere}
 .transmitter-popup [data-show-technical]{margin-top:.75rem;width:100%}
+
+/* Map controls: reset below transmitter selector; GPS stays inside map canvas. */
+.map-reset-filter{width:100%;justify-content:center;margin-top:2px}
+.map-canvas-wrap{position:relative}
+.map-location-control{position:absolute;right:14px;bottom:14px;z-index:1100;width:42px;height:42px;display:grid;place-items:center;border:1px solid #d5deea;border-radius:11px;background:#fff;color:#294563;box-shadow:0 3px 12px #142b461f;cursor:pointer}
+.map-location-control:hover{background:#f1f6fc;border-color:#9db9df}
+.map-location-control:disabled{opacity:.65;cursor:wait}
+.map-location-control svg{width:19px;height:19px}

@@ -7,7 +7,7 @@ function addTerrainLegend() {
         state.map.removeControl(state.mapTerrainLegend);
         state.mapTerrainLegend = null;
     }
-    const legend = L.control({ position: 'bottomleft' });
+    const legend = L.control({ position: 'bottomright' });
     legend.onAdd = function () {
         const div = L.DomUtil.create('div', 'map-terrain-legend');
         div.innerHTML = '<strong>Prediksi kekuatan sinyal</strong>' +
@@ -22,35 +22,12 @@ function addTerrainLegend() {
     state.mapTerrainLegend = legend;
 }
 
-window.ktvdiShowCoverageLoading = function () {
-    const mapEl = document.getElementById('map');
-    if (!mapEl) return;
-    let loading = mapEl.querySelector('.map-coverage-loading');
-    if (!loading) {
-        loading = document.createElement('div');
-        loading.className = 'map-coverage-loading';
-        loading.setAttribute('role', 'status');
-        loading.setAttribute('aria-live', 'polite');
-        loading.innerHTML = '<span class="map-coverage-spinner" aria-hidden="true"></span><span>Memuat tampilan coverage…</span>';
-        mapEl.appendChild(loading);
-    }
-    loading.hidden = false;
-};
-
-window.ktvdiHideCoverageLoading = function () {
-    const loading = document.querySelector('#map .map-coverage-loading');
-    if (loading) loading.hidden = true;
-};
-
 window.ktvdiUpdateTerrain = function () {
-    const resetCoverageButtons = () => {
-        window.ktvdiHideCoverageLoading();
-        document.querySelectorAll('[data-coverage]').forEach(button => {
-            button.disabled = false;
-            button.textContent = 'Lihat Coverage';
-            button.classList.remove('is-loading');
-        });
-    };
+    const resetCoverageButtons = () => document.querySelectorAll('[data-coverage]').forEach(button => {
+        button.disabled = false;
+        button.textContent = 'Lihat Coverage';
+        button.classList.remove('is-loading');
+    });
     const terrain = state.terrain;
     if (!state.map || !terrain || typeof terrain.image_data_uri !== 'string' ||
         !terrain.image_data_uri.startsWith('data:image/png;base64,') ||
@@ -72,7 +49,7 @@ window.ktvdiUpdateTerrain = function () {
             if (state.map.hasLayer(state.mapTerrainLayer)) state.map.removeLayer(state.mapTerrainLayer);
         } catch (_) {}
     }
-    const layer = L.imageOverlay(terrain.image_data_uri, terrain.bounds, { opacity: .82, interactive: false });
+    const layer = L.imageOverlay(terrain.image_data_uri, terrain.bounds, { opacity: .82, interactive: false, pane: 'overlayPane' });
     state.mapTerrainLayer = layer;
     layer.once('error', () => {
         resetCoverageButtons();

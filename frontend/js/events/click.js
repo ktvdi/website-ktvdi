@@ -1,8 +1,35 @@
 /* KTVDI frontend events: delegated UI events and Streamlit message lifecycle. */
 'use strict';
 // Global delegated navigation and forms.
-// Leaflet popup containers stop click propagation before the document bubble
-// phase. Capture the coverage action so popup buttons reliably reach Streamlit.
+// Coverage action is also bound directly when each Leaflet popup opens.
+// This avoids relying on delegated events across Leaflet's popup event handling.
+window.ktvdiRequestCoverage = function (coverage) {
+    if (!coverage || coverage.dataset.coverageBusy === '1') return;
+    const [provinsi, wilayah, mux] = String(coverage.dataset.coverage || '').split('|');
+    if (!provinsi || !wilayah || !mux) {
+        notice('Data pemancar untuk prediksi coverage tidak lengkap.');
+        return;
+    }
+    state.selected = { provinsi, wilayah, mux };
+    state.mapMuxSelection = coverage.dataset.coverage;
+    state.terrain = null;
+    state.terrainRequestedKey = coverage.dataset.coverage;
+    coverage.dataset.coverageBusy = '1';
+    coverage.disabled = true;
+    coverage.textContent = 'Menghitung…';
+    coverage.classList.add('is-loading');
+    notice('Permintaan prediksi coverage dikirim. Sedang menghitung kontur terrain…');
+    send('calculate_terrain', state.selected);
+};
+
+document.addEventListener('click', e => {
+    const coverage = e.target instanceof Element ? e.target.closest('[data-coverage]') : null;
+    if (!coverage) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    window.ktvdiRequestCoverage(coverage);
+}, true);
+
 document.addEventListener('click', e => {
     const coverage = e.target instanceof Element ? e.target.closest('[data-coverage]') : null;
     if (!coverage) return;

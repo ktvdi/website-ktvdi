@@ -25,6 +25,7 @@ function addTerrainLegend() {
 window.ktvdiUpdateTerrain = function () {
     const resetCoverageButtons = () => document.querySelectorAll('[data-coverage]').forEach(button => {
         button.disabled = false;
+        button.dataset.coverageBusy = '0';
         button.textContent = 'Lihat Coverage';
         button.classList.remove('is-loading');
     });
@@ -49,18 +50,38 @@ window.ktvdiUpdateTerrain = function () {
             if (state.map.hasLayer(state.mapTerrainLayer)) state.map.removeLayer(state.mapTerrainLayer);
         } catch (_) {}
     }
-    const layer = L.imageOverlay(terrain.image_data_uri, terrain.bounds, { opacity: .82, interactive: false, pane: 'overlayPane' });
+    const layer = L.imageOverlay(terrain.image_data_uri, terrain.bounds, {
+        opacity: .82,
+        interactive: false,
+        pane: 'overlayPane',
+        crossOrigin: false
+    });
     state.mapTerrainLayer = layer;
+    const clearLoadTimer = () => {
+        if (state.mapTerrainLoadTimer) {
+            window.clearTimeout(state.mapTerrainLoadTimer);
+            state.mapTerrainLoadTimer = null;
+        }
+    };
     layer.once('error', () => {
+        clearLoadTimer();
         resetCoverageButtons();
         notice('Gambar prediksi gagal dimuat pada peta. Periksa data PNG dari backend.');
     });
-    layer.once('load', resetCoverageButtons);
+    layer.once('load', () => {
+        clearLoadTimer();
+        resetCoverageButtons();
+    });
     layer.addTo(state.map);
     addTerrainLegend();
     if (state.mapLayerControl) state.mapLayerControl.addOverlay(layer, 'Prediksi terrain DEM');
-    state.map.fitBounds(terrain.bounds, { padding: [18, 18], animate: true, duration: .45 });
-    // Fallback jika event load tidak terpanggil oleh browser.
-    window.setTimeout(resetCoverageButtons, 1200);
+    // Animasi fitBounds menambah waktu visual; nonaktifkan agar overlay segera stabil.
+    state.map.fitBounds(terrain.bounds, { padding: [18, 18], animate: false });
+    // Pengaman jika browser tidak mengirim event load/error; jangan reset terlalu dini.
+    clearLoadTimer();
+    state.mapTerrainLoadTimer = window.setTimeout(() => {
+        state.mapTerrainLoadTimer = null;
+        resetCoverageButtons();
+    }, 15000);
     return true;
 };

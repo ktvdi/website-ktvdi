@@ -29,6 +29,7 @@ def _calculate_terrain_layer(tx_for_calc, lat, lon, fallback_erp, fallback_tx, s
     from terrain import _terrain_dem_coverage
     from PIL import Image
     import base64
+    import time
     from io import BytesIO
 
     layers = _terrain_dem_coverage(
@@ -59,11 +60,17 @@ def _calculate_terrain_layer(tx_for_calc, lat, lon, fallback_erp, fallback_tx, s
         )
     image = Image.fromarray(image_array.astype("uint8", copy=False), mode="RGBA")
     buf = BytesIO()
+    png_started = time.perf_counter()
     # Encoding cepat; optimize=True melakukan pass optimasi tambahan yang mahal.
     image.save(buf, format="PNG", optimize=False, compress_level=1)
+    png_bytes = buf.getvalue()
+    image_data_uri = "data:image/png;base64," + base64.b64encode(png_bytes).decode("ascii")
+    png_encode_seconds = time.perf_counter() - png_started
     layer_data = {k: v for k, v in layer.items() if k != "image"}
-    layer_data["coverage_engine"] = "legacy-dem-mapzen-knife-edge-no-cache"
-    layer_data["image_data_uri"] = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+    layer_data["coverage_engine"] = "optimized-dem-mapzen-knife-edge-no-cache"
+    layer_data["png_size_bytes"] = len(png_bytes)
+    layer_data["png_encode_seconds"] = round(png_encode_seconds, 3)
+    layer_data["image_data_uri"] = image_data_uri
 
     return layer_data
 

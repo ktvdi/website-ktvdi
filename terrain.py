@@ -3,7 +3,6 @@ import math
 import re
 import os
 import tempfile
-import shutil
 
 def _uhf_frequency_mhz(mux_name):
     """Perkiraan frekuensi tengah kanal UHF DVB-T2 (kanal 21 mulai 474 MHz, lebar 8 MHz)."""
@@ -131,26 +130,6 @@ def _resolve_transmitter_technical_data(tx, fallback_erp_watt=1000.0,
     }
 
 
-def _clear_legacy_dem_caches():
-    """Hapus cache DEM KTVDI versi lama yang mungkin tertinggal di server."""
-    candidates = (
-        os.path.join(tempfile.gettempdir(), "ktvdi_elevation_cache_v1"),
-        os.path.join(tempfile.gettempdir(), "ktvdi_elevation_cache_v2"),
-        os.path.join(tempfile.gettempdir(), "ktvdi_elevation_cache_v3"),
-        os.path.join(tempfile.gettempdir(), "ktvdi_dem_cache_v1"),
-        os.path.join(tempfile.gettempdir(), "ktvdi_dem_cache_v2"),
-        os.path.join(tempfile.gettempdir(), "ktvdi_dem_cache_v3"),
-    )
-    for path in candidates:
-        if os.path.isdir(path):
-            shutil.rmtree(path, ignore_errors=True)
-        elif os.path.isfile(path):
-            try:
-                os.remove(path)
-            except OSError:
-                pass
-
-
 def _terrain_dem_coverage(located, center_lat, center_lon,
                           erp_watt=1000.0, tx_height_m=30.0, rx_height_m=10.0,
                           rx_threshold_dbm=-90.0, extra_loss_db=4.0,
@@ -165,13 +144,14 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
     """
     import os
     import tempfile
-    # Tidak membersihkan direktori cache global pada setiap permintaan.
-    # DEM untuk permintaan ini tetap diunduh ke TemporaryDirectory di bawah,
-    # sehingga tidak ada cache DEM persisten yang dipakai.
+    import time
+    # Tidak menggunakan cache persisten: seluruh data DEM hanya hidup selama
+    # permintaan ini dan dihapus otomatis setelah raster berada di memori.
     import numpy as np
     import rasterio
     import elevation
-    from rasterio.warp import calculate_default_transform, reproject, Resampling
+    from rasterio.warp import reproject, Resampling
+    from rasterio.transform import from_origin
     from pyproj import CRS, Transformer
     from scipy.ndimage import map_coordinates
 
@@ -229,10 +209,14 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         # Tidak menggunakan cache DEM persisten. Semua tile, VRT, dan GeoTIFF
         # hanya boleh berada di direktori sementara untuk permintaan ini.
         last_dem_error = None
-        dem = None
-        dst_transform = None
-        width = height = 0
+        dem_grid = None
+        dst_transform = from_origin(xmin, ymax, cell, cell)
 
+        # Warp DEM langsung ke grid overlay final (n x n). Jalur lama membuat
+        # raster proyeksi perantara, lalu menginterpolasinya lagi ke grid akhir.
+        # Direct warp menghindari satu raster besar dan satu pass interpolasi.
+        dem_download_seconds = 0.0
+        dem_warp_seconds = 0.0
         for attempt in range(3):
             try:
                 with tempfile.TemporaryDirectory(prefix="ktvdi_dem_") as dem_work_dir:
@@ -240,82 +224,104 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
                     os.makedirs(ephemeral_tile_dir, exist_ok=True)
                     dem_path = os.path.join(dem_work_dir, "terrain.tif")
 
+                    stage_started = time.perf_counter()
                     elevation.clip(
                         bounds=(west, south, east, north),
                         output=dem_path,
                         product=dem_product,
                         cache_dir=ephemeral_tile_dir,
                     )
+                    dem_download_seconds += time.perf_counter() - stage_started
 
-                    # Validasi seluruh blok agar TIFF yang korup tidak diteruskan.
-                    with rasterio.open(dem_path) as check_src:
-                        if (check_src.width <= 0 or check_src.height <= 0 or
-                                check_src.count < 1 or check_src.crs is None):
-                            raise ValueError("Metadata GeoTIFF DEM tidak valid.")
-                        valid_pixels = 0
-                        for _, window in check_src.block_windows(1):
-                            block = check_src.read(1, window=window, masked=True)
-                            valid_pixels += int(block.count())
-                        if valid_pixels == 0:
-                            raise ValueError("GeoTIFF DEM tidak memiliki piksel elevasi valid.")
-
-                    # Raster diproyeksikan ke memori sebelum direktori sementara
-                    # dihapus otomatis oleh TemporaryDirectory.
                     with rasterio.open(dem_path) as src:
-                        dst_transform, width, height = calculate_default_transform(
-                            src.crs, utm_crs, src.width, src.height, *src.bounds,
-                            resolution=cell
+                        if (src.width <= 0 or src.height <= 0 or
+                                src.count < 1 or src.crs is None):
+                            raise ValueError("Metadata GeoTIFF DEM tidak valid.")
+                        dem_grid = np.full((n, n), np.nan, dtype=np.float32)
+                        stage_started = time.perf_counter()
+                        reproject(
+                            source=rasterio.band(src, 1),
+                            destination=dem_grid,
+                            src_transform=src.transform,
+                            src_crs=src.crs,
+                            src_nodata=src.nodata,
+                            dst_transform=dst_transform,
+                            dst_crs=utm_crs,
+                            dst_nodata=np.nan,
+                            resampling=Resampling.bilinear,
+                            num_threads=2,
+                            init_dest_nodata=True,
                         )
-                        dem = np.full((height, width), np.nan, dtype="float32")
-                        reproject(source=rasterio.band(src, 1), destination=dem,
-                                  src_transform=src.transform, src_crs=src.crs,
-                                  src_nodata=src.nodata, dst_transform=dst_transform,
-                                  dst_crs=utm_crs, resampling=Resampling.bilinear,
-                                  dst_nodata=np.nan)
+                        dem_warp_seconds += time.perf_counter() - stage_started
 
+                if not np.isfinite(dem_grid).any():
+                    raise ValueError("GeoTIFF DEM tidak memiliki piksel elevasi valid pada area target.")
                 last_dem_error = None
                 break
             except Exception as dem_error:
+                dem_grid = None
                 last_dem_error = dem_error
 
-        if last_dem_error is not None or dem is None:
+        if last_dem_error is not None or dem_grid is None:
             raise RuntimeError(
-                "Data DEM MAPZEN gagal diunduh atau dibaca setelah 3 percobaan. "
+                "Data DEM MAPZEN gagal diunduh atau diproyeksikan setelah 3 percobaan. "
                 "Tidak ada cache persisten; file sementara setiap percobaan telah dibuang. "
                 f"Detail: {last_dem_error}"
             ) from last_dem_error
 
-        inv = ~dst_transform
-        col, row = inv * (xx, yy)
-        dem_grid = map_coordinates(dem, [row, col], order=1, mode="nearest")
+        # Grid DEM sudah sama persis dengan grid overlay sehingga tidak perlu
+        # map_coordinates kedua untuk membentuk dem_grid.
         valid = np.isfinite(dem_grid) & (dem_grid > -500)
         radial_km = np.sqrt((xx-tx_x)**2 + (yy-tx_y)**2) / 1000.0
         mask = valid & (radial_km <= terrain_radius_km)
         if not np.any(mask):
             raise ValueError("DEM tidak mencakup area prediksi atau seluruh piksel DEM kosong.")
 
-        tx_row, tx_col = inv * (tx_x, tx_y)
-        tx_ground = float(map_coordinates(dem, [[tx_row], [tx_col]],
-                                          order=1, mode="nearest")[0])
+        propagation_started = time.perf_counter()
+        inv = ~dst_transform
+        tx_col, tx_row = inv * (tx_x, tx_y)
+        # scipy mengindeks pusat piksel pada bilangan bulat; affine raster
+        # mengembalikan koordinat sudut piksel, sehingga kurangi 0.5.
+        tx_ground = float(map_coordinates(
+            dem_grid, [[tx_row - 0.5], [tx_col - 0.5]],
+            order=1, mode="nearest", prefilter=False
+        )[0])
         dx, dy = xx - tx_x, yy - tx_y
         distance = np.maximum(np.sqrt(dx*dx + dy*dy), 50.0)
         tx_abs = tx_ground + float(tx_height_used)
         rx_abs = dem_grid + float(rx_height_m)
         max_v = np.full(dem_grid.shape, -10.0, dtype="float32")
         wavelength = 299.792458 / float(freq)
-        sample_fracs = np.linspace(0.04, 0.96, 24, dtype="float32")
-        for frac in sample_fracs:
-            sx, sy = tx_x + dx*frac, tx_y + dy*frac
-            scol, srow = inv * (sx, sy)
-            terrain = map_coordinates(dem, [srow.ravel(), scol.ravel()],
-                                      order=1, mode="nearest").reshape(dem_grid.shape)
-            d1 = np.maximum(distance * frac, 1.0)
-            d2 = np.maximum(distance * (1.0-frac), 1.0)
+        sample_fracs = np.linspace(0.04, 0.96, 24, dtype=np.float32)
+
+        # Ambil 24 profil difraksi dalam satu operasi interpolasi per blok baris.
+        # Ini mempertahankan jumlah sampel model, tetapi mengurangi pemanggilan
+        # scipy dan membatasi penggunaan RAM dibanding membuat tensor 700x700 penuh.
+        chunk_rows = 64
+        frac_3d = sample_fracs[:, None, None]
+        for row_start in range(0, n, chunk_rows):
+            row_end = min(row_start + chunk_rows, n)
+            dx_chunk = dx[row_start:row_end]
+            dy_chunk = dy[row_start:row_end]
+            distance_chunk = distance[row_start:row_end]
+            rx_abs_chunk = rx_abs[row_start:row_end]
+
+            sample_x = tx_x + frac_3d * dx_chunk[None, :, :]
+            sample_y = tx_y + frac_3d * dy_chunk[None, :, :]
+            coordinates = np.empty((2, len(sample_fracs), row_end-row_start, n), dtype=np.float32)
+            coordinates[0] = (ymax - sample_y) / cell - 0.5
+            coordinates[1] = (sample_x - xmin) / cell - 0.5
+            terrain_samples = map_coordinates(
+                dem_grid, coordinates, order=1, mode="nearest", prefilter=False
+            )
+
+            d1 = np.maximum(distance_chunk[None, :, :] * frac_3d, 1.0)
+            d2 = np.maximum(distance_chunk[None, :, :] * (1.0-frac_3d), 1.0)
             earth_bulge = d1*d2 / (2.0*(4.0/3.0)*6371000.0)
-            los_height = tx_abs + (rx_abs-tx_abs)*frac
-            obstruction = terrain + earth_bulge - los_height
+            los_height = tx_abs + (rx_abs_chunk[None, :, :] - tx_abs) * frac_3d
+            obstruction = terrain_samples + earth_bulge - los_height
             v = obstruction * np.sqrt(2.0*(d1+d2)/(wavelength*d1*d2))
-            max_v = np.maximum(max_v, v.astype("float32"))
+            max_v[row_start:row_end] = np.max(v, axis=0).astype(np.float32, copy=False)
 
         v_formula = np.maximum(max_v, -0.78)
         knife_edge_loss = 6.9 + 20.0*np.log10(
@@ -352,14 +358,21 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
             rgba[selected, 1] = rgb[1]
             rgba[selected, 2] = rgb[2]
         rgba[..., 3] = np.where(predicted_pixels, 220, 0).astype("uint8")
+        propagation_seconds = time.perf_counter() - propagation_started
+        predicted_values = rx_dbm[predicted_pixels]
+        if predicted_values.size:
+            percentile_values = np.percentile(predicted_values, [5, 95])
+            min_dbm, max_dbm = float(percentile_values[0]), float(percentile_values[1])
+        else:
+            min_dbm = max_dbm = None
         west_ll, south_ll = from_utm.transform(xmin, tx_y-radius_m)
         east_ll, north_ll = from_utm.transform(tx_x+radius_m, ymax)
         outputs.append({
-            "coverage_engine": "legacy-dem-mapzen-knife-edge-no-cache",
+            "coverage_engine": "optimized-dem-mapzen-knife-edge-no-cache",
             "name": f"{tx.get('mux','MUX')} — {tx.get('wilayah','')}",
             "image": rgba, "bounds": [[south_ll, west_ll], [north_ll, east_ll]],
-            "min_dbm": float(np.nanpercentile(rx_dbm, 5)) if np.any(predicted_pixels) else None,
-            "max_dbm": float(np.nanpercentile(rx_dbm, 95)) if np.any(predicted_pixels) else None,
+            "min_dbm": min_dbm,
+            "max_dbm": max_dbm,
             "frequency": freq, "max_range_km": max_range_km,
             "terrain_radius_km": terrain_radius_km,
             "terrain_diameter_km": 2.0 * terrain_radius_km,
@@ -370,6 +383,10 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
             "predicted_pixel_count": int(np.count_nonzero(predicted_pixels)),
             "fs_range_km": fs_range_km, "radio_horizon_km": horizon_km,
             "raster_resolution_m": cell, "rx_threshold_dbm": float(rx_threshold_dbm),
+            "raster_width": int(n), "raster_height": int(n),
+            "dem_download_seconds": round(dem_download_seconds, 3),
+            "dem_warp_seconds": round(dem_warp_seconds, 3),
+            "propagation_seconds": round(propagation_seconds, 3),
             "erp_used_w": float(erp_used), "tx_height_used_m": float(tx_height_used),
             "tx_power_w": technical.get("tx_power_w"),
             "erp_source": technical.get("erp_source"),

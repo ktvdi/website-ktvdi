@@ -55,30 +55,45 @@ def _coverage_parameter_hash(row, lat, lon, erp, tx_height, rx_height, threshold
 
 
 def _coverage_png_data_uri(values, threshold_dbm):
-    """Bangun ulang PNG RGBA dari raster daya terima float32."""
+    """Bangun PNG palet terindeks; warna dan alpha coverage tetap persis."""
     values = np.asarray(values, dtype=np.float32)
     predicted = np.isfinite(values) & (values != 0.0)
     margin = values - float(threshold_dbm)
-    rgba = np.zeros((*values.shape, 4), dtype=np.uint8)
-    bins = (
-        (margin < 6.0, (235, 35, 35)),
-        ((margin >= 6.0) & (margin < 15.0), (255, 220, 0)),
-        ((margin >= 15.0) & (margin < 25.0), (20, 180, 65)),
-        (margin >= 25.0, (25, 105, 235)),
-    )
-    for condition, rgb in bins:
-        selected = predicted & condition
-        rgba[selected, 0] = rgb[0]
-        rgba[selected, 1] = rgb[1]
-        rgba[selected, 2] = rgb[2]
-    rgba[..., 3] = np.where(predicted, 220, 0).astype(np.uint8)
 
-    image = Image.fromarray(rgba, mode="RGBA")
+    # Indeks 0 khusus No Data (transparan); indeks 1-4 adalah kelas warna
+    # yang sama persis dengan renderer RGBA sebelumnya.
+    indexed = np.zeros(values.shape, dtype=np.uint8)
+    indexed[predicted & (margin < 6.0)] = 1
+    indexed[predicted & (margin >= 6.0) & (margin < 15.0)] = 2
+    indexed[predicted & (margin >= 15.0) & (margin < 25.0)] = 3
+    indexed[predicted & (margin >= 25.0)] = 4
+
+    palette = [
+        0, 0, 0,          # 0: No Data (alpha 0)
+        235, 35, 35,      # 1: lemah
+        255, 220, 0,      # 2: cukup
+        20, 180, 65,      # 3: baik
+        25, 105, 235,     # 4: sangat baik
+    ]
+    palette.extend([0] * (768 - len(palette)))
+
+    image = Image.fromarray(indexed, mode="P")
+    image.putpalette(palette)
+    # Alpha 220 untuk semua kelas coverage, 0 untuk No Data.
+    transparency = bytes([0, 220, 220, 220, 220])
+
     buf = BytesIO()
     started = time.perf_counter()
-    image.save(buf, format="PNG", optimize=False, compress_level=1)
+    image.save(
+        buf,
+        format="PNG",
+        optimize=False,
+        compress_level=6,
+        transparency=transparency,
+    )
     png_bytes = buf.getvalue()
-    return "data:image/png;base64," + base64.b64encode(png_bytes).decode("ascii"), len(png_bytes), time.perf_counter() - started
+    data_uri = "data:image/png;base64," + base64.b64encode(png_bytes).decode("ascii")
+    return data_uri, len(png_bytes), time.perf_counter() - started
 
 
 def _save_coverage_result(cache_key, layer_data, coverage_values):

@@ -165,7 +165,9 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
     """
     import os
     import tempfile
-    _clear_legacy_dem_caches()
+    # Tidak membersihkan direktori cache global pada setiap permintaan.
+    # DEM untuk permintaan ini tetap diunduh ke TemporaryDirectory di bawah,
+    # sehingga tidak ada cache DEM persisten yang dipakai.
     import numpy as np
     import rasterio
     import elevation

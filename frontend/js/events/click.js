@@ -19,7 +19,8 @@ window.ktvdiRequestCoverage = function (coverage) {
     coverage.textContent = 'Menghitung…';
     coverage.classList.add('is-loading');
     notice('Permintaan prediksi coverage dikirim. Sedang menghitung kontur terrain…');
-    send('calculate_terrain', state.selected);
+    // Beri browser satu frame untuk menggambar status tombol sebelum request Streamlit.
+    requestAnimationFrame(() => send('calculate_terrain', state.selected));
 };
 
 document.addEventListener('click', e => {
@@ -28,27 +29,6 @@ document.addEventListener('click', e => {
     e.preventDefault();
     e.stopImmediatePropagation();
     window.ktvdiRequestCoverage(coverage);
-}, true);
-
-document.addEventListener('click', e => {
-    const coverage = e.target instanceof Element ? e.target.closest('[data-coverage]') : null;
-    if (!coverage) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const [provinsi, wilayah, mux] = coverage.dataset.coverage.split('|');
-    if (!provinsi || !wilayah || !mux) {
-        notice('Data pemancar untuk prediksi coverage tidak lengkap.');
-        return;
-    }
-    state.selected = { provinsi, wilayah, mux };
-    state.mapMuxSelection = coverage.dataset.coverage;
-    state.terrain = null;
-    state.terrainRequestedKey = coverage.dataset.coverage;
-    coverage.disabled = true;
-    coverage.textContent = 'Menghitung…';
-    coverage.classList.add('is-loading');
-    notice('Menghitung prediksi coverage berdasarkan kontur terrain dan data pemancar…');
-    send('calculate_terrain', state.selected);
 }, true);
 
 document.addEventListener('click', e => { const showTechnical = e.target.closest('[data-show-technical]'); if (showTechnical) {

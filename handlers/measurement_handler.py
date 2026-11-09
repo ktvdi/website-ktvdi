@@ -59,7 +59,8 @@ def _calculate_terrain_layer(tx_for_calc, lat, lon, fallback_erp, fallback_tx, s
         )
     image = Image.fromarray(image_array.astype("uint8", copy=False), mode="RGBA")
     buf = BytesIO()
-    image.save(buf, format="PNG", optimize=True)
+    # Encoding cepat; optimize=True melakukan pass optimasi tambahan yang mahal.
+    image.save(buf, format="PNG", optimize=False, compress_level=1)
     layer_data = {k: v for k, v in layer.items() if k != "image"}
     layer_data["coverage_engine"] = "legacy-dem-mapzen-knife-edge-no-cache"
     layer_data["image_data_uri"] = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")

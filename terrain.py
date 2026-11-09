@@ -370,7 +370,11 @@ def _terrain_dem_coverage(located, center_lat, center_lon,
         outputs.append({
             "coverage_engine": "optimized-dem-mapzen-knife-edge-no-cache",
             "name": f"{tx.get('mux','MUX')} — {tx.get('wilayah','')}",
-            "image": rgba, "bounds": [[south_ll, west_ll], [north_ll, east_ll]],
+            "image": rgba,
+            # Raster numerik float32 disimpan oleh handler ke Firebase (terkompresi).
+            # PNG tetap dibuat saat diminta dan tidak disimpan permanen.
+            "coverage_values": rx_dbm.astype("<f4", copy=False),
+            "bounds": [[south_ll, west_ll], [north_ll, east_ll]],
             "min_dbm": min_dbm,
             "max_dbm": max_dbm,
             "frequency": freq, "max_range_km": max_range_km,

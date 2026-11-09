@@ -6,6 +6,8 @@ import re
 import json
 import hashlib
 import time
+import zlib
+import numpy as np
 from collections import OrderedDict
 from threading import RLock
 from datetime import datetime
@@ -25,6 +27,117 @@ from services.map_serializers import (has_map_private_access, serialize_map_meas
 REPORT_STATUSES = ["Menunggu", "Sedang ditinjau", "Selesai", "Ditolak"]
 
 
+
+# Cache hasil numerik permanen di Firebase Realtime Database.
+# PNG tidak pernah disimpan; gambar dibentuk ulang dari raster float32.
+COVERAGE_CACHE_ALGORITHM_VERSION = "ktvdi-coverage-raster-v1"
+COVERAGE_CACHE_ROOT = "coverage_results"
+COVERAGE_CHUNK_CHARS = 200_000
+
+
+def _coverage_parameter_hash(row, lat, lon, erp, tx_height, rx_height, threshold, extra_loss):
+    payload = {
+        "algorithm_version": COVERAGE_CACHE_ALGORITHM_VERSION,
+        "dem_product": "MAPZEN",
+        "radius_km": 100.0,
+        "grid_max_side": 700,
+        "transmitter": row,
+        "center_lat": float(lat),
+        "center_lon": float(lon),
+        "erp_w": float(erp),
+        "tx_height_m": float(tx_height),
+        "rx_height_m": float(rx_height),
+        "rx_threshold_dbm": float(threshold),
+        "extra_loss_db": float(extra_loss),
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str, allow_nan=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _coverage_png_data_uri(values, threshold_dbm):
+    """Bangun ulang PNG RGBA dari raster daya terima float32."""
+    values = np.asarray(values, dtype=np.float32)
+    predicted = np.isfinite(values) & (values != 0.0)
+    margin = values - float(threshold_dbm)
+    rgba = np.zeros((*values.shape, 4), dtype=np.uint8)
+    bins = (
+        (margin < 6.0, (235, 35, 35)),
+        ((margin >= 6.0) & (margin < 15.0), (255, 220, 0)),
+        ((margin >= 15.0) & (margin < 25.0), (20, 180, 65)),
+        (margin >= 25.0, (25, 105, 235)),
+    )
+    for condition, rgb in bins:
+        selected = predicted & condition
+        rgba[selected, 0] = rgb[0]
+        rgba[selected, 1] = rgb[1]
+        rgba[selected, 2] = rgb[2]
+    rgba[..., 3] = np.where(predicted, 220, 0).astype(np.uint8)
+
+    image = Image.fromarray(rgba, mode="RGBA")
+    buf = BytesIO()
+    started = time.perf_counter()
+    image.save(buf, format="PNG", optimize=False, compress_level=1)
+    png_bytes = buf.getvalue()
+    return "data:image/png;base64," + base64.b64encode(png_bytes).decode("ascii"), len(png_bytes), time.perf_counter() - started
+
+
+def _save_coverage_result(cache_key, layer_data, coverage_values):
+    values = np.asarray(coverage_values, dtype="<f4", order="C")
+    compressed = zlib.compress(values.tobytes(order="C"), level=6)
+    encoded = base64.b64encode(compressed).decode("ascii")
+    chunks = {
+        str(index): encoded[start:start + COVERAGE_CHUNK_CHARS]
+        for index, start in enumerate(range(0, len(encoded), COVERAGE_CHUNK_CHARS))
+    }
+    metadata = dict(layer_data)
+    metadata.pop("image_data_uri", None)
+    metadata.pop("png_size_bytes", None)
+    metadata.pop("png_encode_seconds", None)
+    record = {
+        "status": "completed",
+        "algorithm_version": COVERAGE_CACHE_ALGORITHM_VERSION,
+        "raster_encoding": "zlib-base64-float32-le",
+        "raster_width": int(values.shape[1]),
+        "raster_height": int(values.shape[0]),
+        "raster_chunk_count": len(chunks),
+        "raster_chunks": chunks,
+        "metadata": metadata,
+        "created_at": int(time.time()),
+        "compressed_bytes": len(compressed),
+        "uncompressed_bytes": int(values.nbytes),
+    }
+    db.reference(f"{COVERAGE_CACHE_ROOT}/{cache_key}").set(record)
+    return len(compressed)
+
+
+def _load_coverage_result(cache_key):
+    record = db.reference(f"{COVERAGE_CACHE_ROOT}/{cache_key}").get()
+    if not isinstance(record, dict) or record.get("status") != "completed":
+        return None
+    if record.get("algorithm_version") != COVERAGE_CACHE_ALGORITHM_VERSION:
+        return None
+    if record.get("raster_encoding") != "zlib-base64-float32-le":
+        return None
+    width = int(record.get("raster_width", 0))
+    height = int(record.get("raster_height", 0))
+    count = int(record.get("raster_chunk_count", 0))
+    chunks = record.get("raster_chunks")
+    metadata = record.get("metadata")
+    if (width <= 0 or height <= 0 or width > 2000 or height > 2000 or
+            width * height > 4_000_000 or count <= 0 or count > 100 or
+            not isinstance(chunks, dict) or not isinstance(metadata, dict)):
+        return None
+    try:
+        encoded = "".join(chunks[str(index)] for index in range(count))
+        raw = zlib.decompress(base64.b64decode(encoded, validate=True))
+        expected_bytes = width * height * np.dtype("<f4").itemsize
+        if len(raw) != expected_bytes:
+            return None
+        values = np.frombuffer(raw, dtype="<f4").reshape((height, width)).copy()
+    except (KeyError, ValueError, TypeError, zlib.error):
+        return None
+    return metadata, values, record.get("created_at")
+
 def _calculate_terrain_layer(tx_for_calc, lat, lon, fallback_erp, fallback_tx, sim_rx, sim_threshold, sim_loss):
     from terrain import _terrain_dem_coverage
     from PIL import Image
@@ -41,6 +154,7 @@ def _calculate_terrain_layer(tx_for_calc, lat, lon, fallback_erp, fallback_tx, s
         raise ValueError("Tidak ada hasil prediksi terrain.")
     layer = layers[0]
     image_array = layer.get("image")
+    coverage_values = layer.get("coverage_values")
     bounds = layer.get("bounds")
     if image_array is None or getattr(image_array, "ndim", 0) != 3 or image_array.shape[2] != 4:
         raise RuntimeError("Raster coverage tidak menghasilkan gambar RGBA yang valid.")
@@ -58,21 +172,17 @@ def _calculate_terrain_layer(tx_for_calc, lat, lon, fallback_erp, fallback_tx, s
             "Raster DEM tidak menghasilkan piksel visual. Periksa data elevasi "
             "dan koordinat pemancar; tidak membuat coverage pengganti."
         )
-    image = Image.fromarray(image_array.astype("uint8", copy=False), mode="RGBA")
-    buf = BytesIO()
-    png_started = time.perf_counter()
-    # Encoding cepat; optimize=True melakukan pass optimasi tambahan yang mahal.
-    image.save(buf, format="PNG", optimize=False, compress_level=1)
-    png_bytes = buf.getvalue()
-    image_data_uri = "data:image/png;base64," + base64.b64encode(png_bytes).decode("ascii")
-    png_encode_seconds = time.perf_counter() - png_started
-    layer_data = {k: v for k, v in layer.items() if k != "image"}
-    layer_data["coverage_engine"] = "optimized-dem-mapzen-knife-edge-no-cache"
-    layer_data["png_size_bytes"] = len(png_bytes)
+    if coverage_values is None or np.asarray(coverage_values).shape != image_array.shape[:2]:
+        raise RuntimeError("Raster numerik coverage tidak tersedia atau dimensinya tidak sesuai.")
+    threshold = float(layer.get("rx_threshold_dbm", -90.0))
+    image_data_uri, png_size_bytes, png_encode_seconds = _coverage_png_data_uri(coverage_values, threshold)
+    layer_data = {k: v for k, v in layer.items() if k not in ("image", "coverage_values")}
+    layer_data["coverage_engine"] = "optimized-dem-mapzen-knife-edge-firebase-raster"
+    layer_data["png_size_bytes"] = png_size_bytes
     layer_data["png_encode_seconds"] = round(png_encode_seconds, 3)
     layer_data["image_data_uri"] = image_data_uri
 
-    return layer_data
+    return layer_data, np.asarray(coverage_values, dtype="<f4")
 
 
 def handle_measurement_handler(action: str, event: dict[str, Any], session: dict[str, Any], secrets=None):
@@ -137,10 +247,52 @@ def handle_measurement_handler(action: str, event: dict[str, Any], session: dict
                     tx_for_calc=row
                     fallback_erp=1000.0
                     fallback_tx=30.0
-                layer_data = _calculate_terrain_layer(
+                cache_key = _coverage_parameter_hash(
                     tx_for_calc, lat, lon, fallback_erp, fallback_tx,
                     sim_rx, sim_threshold, sim_loss,
                 )
+                cache_lookup_started = time.perf_counter()
+                cached = None
+                try:
+                    cached = _load_coverage_result(cache_key)
+                except Exception:
+                    # Firebase cache tidak boleh membuat fitur prediksi gagal.
+                    cached = None
+                cache_lookup_seconds = time.perf_counter() - cache_lookup_started
+                cache_hit = cached is not None
+                if cache_hit:
+                    layer_data, coverage_values, cache_created_at = cached
+                    png_started = time.perf_counter()
+                    image_data_uri, png_size_bytes, png_encode_seconds = _coverage_png_data_uri(
+                        coverage_values, float(layer_data.get("rx_threshold_dbm", sim_threshold))
+                    )
+                    layer_data = dict(layer_data)
+                    layer_data["image_data_uri"] = image_data_uri
+                    layer_data["png_size_bytes"] = png_size_bytes
+                    layer_data["png_encode_seconds"] = round(png_encode_seconds, 3)
+                    layer_data["cache_hit"] = True
+                    layer_data["cache_lookup_seconds"] = round(cache_lookup_seconds, 3)
+                    layer_data["cache_created_at"] = cache_created_at
+                    layer_data["dem_download_seconds"] = 0.0
+                    layer_data["dem_warp_seconds"] = 0.0
+                    layer_data["propagation_seconds"] = 0.0
+                else:
+                    layer_data, coverage_values = _calculate_terrain_layer(
+                        tx_for_calc, lat, lon, fallback_erp, fallback_tx,
+                        sim_rx, sim_threshold, sim_loss,
+                    )
+                    layer_data["cache_hit"] = False
+                    layer_data["cache_lookup_seconds"] = round(cache_lookup_seconds, 3)
+                    cache_write_started = time.perf_counter()
+                    try:
+                        compressed_bytes = _save_coverage_result(cache_key, layer_data, coverage_values)
+                        layer_data["cache_saved"] = True
+                        layer_data["cache_compressed_bytes"] = compressed_bytes
+                    except Exception as cache_error:
+                        # Tetap tampilkan hasil walaupun Firebase gagal menyimpan cache.
+                        layer_data["cache_saved"] = False
+                        layer_data["cache_write_error"] = str(cache_error)[:240]
+                    layer_data["cache_write_seconds"] = round(time.perf_counter() - cache_write_started, 3)
                 valid_pixels = int(layer_data.get("valid_pixel_count", 0) or 0)
                 predicted_pixels = int(layer_data.get("predicted_pixel_count", 0) or 0)
                 min_dbm = layer_data.get("min_dbm")
@@ -175,6 +327,8 @@ def handle_measurement_handler(action: str, event: dict[str, Any], session: dict
                         "perlu pemeriksaan data DEM dan koordinat pemancar."
                     )
                 layer_data["coverage_diagnostics"] = {
+                    "cache_hit": cache_hit,
+                    "cache_key": cache_key,
                     "predicted_pixel_count": predicted_pixels,
                     "accepted_pixel_count": valid_pixels,
                     "rx_threshold_dbm": threshold_dbm,
